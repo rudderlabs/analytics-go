@@ -1,9 +1,12 @@
+# What is RudderStack?
+
+[RudderStack](https://rudderstack.com/) is a **customer data pipeline** tool for collecting, routing and processing data from your websites, apps, cloud tools, and data warehouse.
+
+More information on RudderStack can be found [here](https://github.com/rudderlabs/rudder-server).
 
 ## Installation
 
-The package can be simply installed via "go get", we recommend that you use a tool like
-Godep to avoid issues related to API breaking changes introduced between major
-versions of the library.
+The package can be simply installed via `go get`. We recommend that you use a tool like Godep to avoid issues related to API breaking changes introduced between major versions of the library.
 
 To install it in the GOPATH:
 ```
@@ -36,6 +39,7 @@ func main() {
 }
 ```
 OR
+
 ```go
 package main
 
@@ -67,4 +71,8 @@ func main() {
 
 ## License
 
-The library is released under the [MIT license](LICENSE).
+The library is released under the [MIT license](https://github.com/segmentio/analytics-go/blob/master/LICENSE).
+
+## Contact Us
+
+For any queries, please feel free to [contact us](https://rudderstack.com/contact/) or start a conversation on our [Slack](https://resources.rudderstack.com/join-rudderstack-slack) channel.
