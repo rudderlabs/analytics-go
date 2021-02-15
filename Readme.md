@@ -67,4 +67,4 @@ func main() {
 
 ## License
 
-The library is released under the [MIT license](License.md).
+The library is released under the [MIT license](LICENSE).
