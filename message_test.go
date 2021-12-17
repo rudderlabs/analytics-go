@@ -21,16 +21,16 @@ func TestMessageQueuePushMaxBatchSize(t *testing.T) {
 	m0, _ := makeMessage(Track{
 		UserId: "1",
 		Event:  "A",
-	}, maxMessageBytes)
+	}, defMaxMessageBytes)
 
 	m1, _ := makeMessage(Track{
 		UserId: "2",
 		Event:  "A",
-	}, maxMessageBytes)
+	}, defMaxMessageBytes)
 
 	q := messageQueue{
 		maxBatchSize:  2,
-		maxBatchBytes: maxBatchBytes,
+		maxBatchBytes: defMaxBatchBytes,
 	}
 
 	if msgs := q.push(m0); msgs != nil {
@@ -46,12 +46,12 @@ func TestMessageQueuePushMaxBatchBytes(t *testing.T) {
 	m0, _ := makeMessage(Track{
 		UserId: "1",
 		Event:  "A",
-	}, maxMessageBytes)
+	}, defMaxMessageBytes)
 
 	m1, _ := makeMessage(Track{
 		UserId: "2",
 		Event:  "A",
-	}, maxMessageBytes)
+	}, defMaxMessageBytes)
 
 	q := messageQueue{
 		maxBatchSize:  100,
@@ -74,7 +74,7 @@ func TestMessageQueuePushMaxBatchBytes(t *testing.T) {
 func TestMakeMessage(t *testing.T) {
 	track := Track{UserId: "1"}
 
-	if msg, err := makeMessage(track, maxMessageBytes); err != nil {
+	if msg, err := makeMessage(track, defMaxMessageBytes); err != nil {
 		t.Error("failed to make message from track message:", err)
 
 	} else if !reflect.DeepEqual(msg, message{
