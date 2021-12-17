@@ -579,7 +579,7 @@ func (c *client) maxBatchBytes() int {
 		SentAt:    c.now(),
 		Context:   c.DefaultContext,
 	})
-	return c.maxBatchBytes - len(b)
+	return c.MaxBatchBytes - len(b)
 }
 
 func (c *client) notifySuccess(msgs []message) {
