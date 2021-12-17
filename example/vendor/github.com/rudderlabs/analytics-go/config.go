@@ -83,8 +83,11 @@ type Config struct {
 	//split the payload at node level for multi node setup
 	NoProxySupport bool
 
-	// Maximum size of a message
-	MaxMessageSize int
+	// Maximum bytes in a message
+	MaxMessageBytes int
+
+	// Maximum bytes in a batch
+	MaxBatchBytes int
 }
 
 // This constant sets the default endpoint to which client instances send
@@ -99,10 +102,6 @@ const DefaultInterval = 5 * time.Second
 // This constant sets the default batch size used by client instances if none
 // was explicitly set.
 const DefaultBatchSize = 250
-
-// This constant sets the default batch size used by client instances if none
-// was explicitly set.
-const DefaultMaxMessageSize = 32000
 
 // Verifies that fields that don't have zero-values are set to valid values,
 // returns an error describing the problem if a field was invalid.
@@ -123,19 +122,19 @@ func (c *Config) validate() error {
 		}
 	}
 
-	if c.MaxMessageSize < 0 {
+	if c.MaxMessageBytes < 0 {
 		return ConfigError{
-			Reason: "negative message size is not supported",
-			Field:  "MaxMessageSize",
-			Value:  c.MaxMessageSize,
+			Reason: "negetive value is not supported for MaxMessageBytes",
+			Field:  "MaxMessageBytes",
+			Value:  c.MaxMessageBytes,
 		}
 	}
 
-	if c.MaxMessageSize > maxMessageBytes {
+	if c.MaxBatchBytes < 0 {
 		return ConfigError{
-			Reason: "the max message size exceeds the maximum allowed size",
-			Field:  "MaxMessageSize",
-			Value:  c.MaxMessageSize,
+			Reason: "negetive value is not supported for MaxBatchBytes",
+			Field:  "MaxBatchBytes",
+			Value:  c.MaxBatchBytes,
 		}
 	}
 
@@ -185,8 +184,12 @@ func makeConfig(c Config) Config {
 		c.maxConcurrentRequests = 1000
 	}
 
-	if c.MaxMessageSize == 0 {
-		c.MaxMessageSize = DefaultMaxMessageSize
+	if c.MaxMessageBytes == 0 {
+		c.MaxMessageBytes = defMaxMessageBytes
+	}
+
+	if c.MaxBatchBytes == 0 {
+		c.MaxBatchBytes = defMaxBatchBytes
 	}
 
 	// We always overwrite the 'library' field of the default context set on the

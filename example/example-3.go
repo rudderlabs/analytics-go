@@ -9,7 +9,7 @@ func main() {
 	// User your WRITE KEY in below placeholder "RUDDER WRITE KEY"
 	client, _ := analytics.NewWithConfig("WRITE-KEY", "DATA-PLANE-URL",
 		analytics.Config{
-			MaxMessageSize: 35000, //new field to control the max message size
+			MaxMessageBytes: 35000, //new field to control the max message size
 	})
 
 	if client!= nil{

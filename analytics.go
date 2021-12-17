@@ -82,6 +82,7 @@ func New(writeKey string, dataPlaneUrl string) Client {
 // When the function returns an error the returned client will always be nil.
 func NewWithConfig(writeKey string, dataPlaneUrl string, config Config) (cli Client, err error) {
 	if err = config.validate(); err != nil {
+		fmt.Printf("%+v\n", err)
 		return
 	}
 

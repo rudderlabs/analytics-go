@@ -84,10 +84,10 @@ type Config struct {
 	NoProxySupport bool
 
 	// Maximum bytes in a message
-	MaxMessageBytes uint
+	MaxMessageBytes int
 
 	// Maximum bytes in a batch
-	MaxBatchBytes uint
+	MaxBatchBytes int
 }
 
 // This constant sets the default endpoint to which client instances send
@@ -122,17 +122,17 @@ func (c *Config) validate() error {
 		}
 	}
 
-	if c.MaxMessageBytes == 0 {
+	if c.MaxMessageBytes < 0 {
 		return ConfigError{
-			Reason: "0 is not supported for MaxMessageBytes",
+			Reason: "negetive value is not supported for MaxMessageBytes",
 			Field:  "MaxMessageBytes",
 			Value:  c.MaxMessageBytes,
 		}
 	}
 
-	if c.MaxBatchBytes == 0 {
+	if c.MaxBatchBytes < 0 {
 		return ConfigError{
-			Reason: "0 is not supported for MaxBatchBytes",
+			Reason: "negetive value is not supported for MaxBatchBytes",
 			Field:  "MaxBatchBytes",
 			Value:  c.MaxBatchBytes,
 		}
