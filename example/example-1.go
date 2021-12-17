@@ -7,7 +7,7 @@ import (
 func main() {
 	// Instantiates a client to use send messages to the Rudder API.
 	// User your WRITE KEY in below placeholder "RUDDER WRITE KEY"
-	client := analytics.New("WRITE-KEY", "DATA-PLANE-URL")
+	client := analytics.New("1weqc5iqxRkpaUXHgDgYo3g34mg", "https://hosted.rudderlabs.com")
 
 	if client!= nil{
 		// Enqueues a track event that will be sent asynchronously.
