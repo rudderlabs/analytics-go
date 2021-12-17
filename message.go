@@ -74,7 +74,7 @@ type message struct {
 	json []byte
 }
 
-func makeMessage(m Message, maxBytes int) (msg message, err error) {
+func makeMessage(m Message, maxBytes uint) (msg message, err error) {
 	if msg.json, err = json.Marshal(m); err == nil {
 		if len(msg.json) > maxBytes {
 			err = ErrMessageTooBig
