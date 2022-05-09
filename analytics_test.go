@@ -75,6 +75,10 @@ type testErrorMessage struct{}
 func (m testErrorMessage) internal() {
 }
 
+func (m testErrorMessage) Data() Message {
+	return m
+}
+
 func (m testErrorMessage) Validate() error { return testError }
 
 var (
@@ -180,7 +184,7 @@ func ExampleTrack() {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig("h97jamjwbh", Config{
+	client, _ := NewWithConfig("h97jamjwbh", "https://dataplane.com", Config{
 		Endpoint:  server.URL,
 		BatchSize: 1,
 		now:       mockTime,
@@ -310,7 +314,7 @@ func TestEnqueue(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig("h97jamjwbh", Config{
+	client, _ := NewWithConfig("h97jamjwbh", "https://dataplane.com", Config{
 		Endpoint:  server.URL,
 		Verbose:   true,
 		Logger:    t,
@@ -340,12 +344,15 @@ type customMessage struct {
 func (c *customMessage) internal() {
 }
 
+func (c *customMessage) Data() Message {
+	return c
+}
 func (c *customMessage) Validate() error {
 	return nil
 }
 
 func TestEnqueuingCustomTypeFails(t *testing.T) {
-	client := New("0123456789")
+	client := New("0123456789", "https://dataplane.com")
 	err := client.Enqueue(&customMessage{})
 
 	if err.Error() != "messages with custom types cannot be enqueued: *analytics.customMessage" {
@@ -362,7 +369,7 @@ func TestTrackWithInterval(t *testing.T) {
 
 	t0 := time.Now()
 
-	client, _ := NewWithConfig("h97jamjwbh", Config{
+	client, _ := NewWithConfig("h97jamjwbh", "https://dataplane.com", Config{
 		Endpoint: server.URL,
 		Interval: interval,
 		Verbose:  true,
@@ -398,7 +405,7 @@ func TestTrackWithTimestamp(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig("h97jamjwbh", Config{
+	client, _ := NewWithConfig("h97jamjwbh", "https://dataplane.com", Config{
 		Endpoint:  server.URL,
 		Verbose:   true,
 		Logger:    t,
@@ -430,7 +437,7 @@ func TestTrackWithMessageId(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig("h97jamjwbh", Config{
+	client, _ := NewWithConfig("h97jamjwbh", "https://dataplane.com", Config{
 		Endpoint:  server.URL,
 		Verbose:   true,
 		Logger:    t,
@@ -462,7 +469,7 @@ func TestTrackWithContext(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig("h97jamjwbh", Config{
+	client, _ := NewWithConfig("h97jamjwbh", "https://dataplane.com", Config{
 		Endpoint:  server.URL,
 		Verbose:   true,
 		Logger:    t,
@@ -498,7 +505,7 @@ func TestTrackMany(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig("h97jamjwbh", Config{
+	client, _ := NewWithConfig("h97jamjwbh", "https://dataplane.com", Config{
 		Endpoint:  server.URL,
 		Verbose:   true,
 		Logger:    t,
@@ -530,7 +537,7 @@ func TestTrackWithIntegrations(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig("h97jamjwbh", Config{
+	client, _ := NewWithConfig("h97jamjwbh", "https://dataplane.com", Config{
 		Endpoint:  server.URL,
 		Verbose:   true,
 		Logger:    t,
@@ -561,7 +568,7 @@ func TestTrackWithIntegrations(t *testing.T) {
 }
 
 func TestClientCloseTwice(t *testing.T) {
-	client := New("0123456789")
+	client := New("0123456789", "https://dataplane.com")
 
 	if err := client.Close(); err != nil {
 		t.Error("closing a client should not a return an error")
@@ -577,7 +584,7 @@ func TestClientCloseTwice(t *testing.T) {
 }
 
 func TestClientConfigError(t *testing.T) {
-	client, err := NewWithConfig("0123456789", Config{
+	client, err := NewWithConfig("0123456789", "https://dataplane.com", Config{
 		Interval: -1 * time.Second,
 	})
 
@@ -596,7 +603,7 @@ func TestClientConfigError(t *testing.T) {
 }
 
 func TestClientEnqueueError(t *testing.T) {
-	client := New("0123456789")
+	client := New("0123456789", "https://dataplane.com")
 	defer client.Close()
 
 	if err := client.Enqueue(testErrorMessage{}); err != testError {
@@ -608,7 +615,7 @@ func TestClientCallback(t *testing.T) {
 	reschan := make(chan bool, 1)
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig("0123456789", Config{
+	client, _ := NewWithConfig("0123456789", "https://dataplane.com", Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			func(m Message) { reschan <- true },
@@ -633,7 +640,7 @@ func TestClientCallback(t *testing.T) {
 func TestClientMarshalMessageError(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig("0123456789", Config{
+	client, _ := NewWithConfig("0123456789", "https://dataplane.com", Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			nil,
@@ -662,7 +669,7 @@ func TestClientMarshalMessageError(t *testing.T) {
 func TestClientMarshalContextError(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig("0123456789", Config{
+	client, _ := NewWithConfig("0123456789", "https://dataplane.com", Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			nil,
@@ -691,7 +698,7 @@ func TestClientMarshalContextError(t *testing.T) {
 func TestClientNewRequestError(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig("0123456789", Config{
+	client, _ := NewWithConfig("0123456789", "https://dataplane.com", Config{
 		Endpoint: "://localhost:80", // Malformed endpoint URL.
 		Logger:   testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
@@ -712,7 +719,7 @@ func TestClientNewRequestError(t *testing.T) {
 func TestClientRoundTripperError(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig("0123456789", Config{
+	client, _ := NewWithConfig("0123456789", "https://dataplane.com", Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			nil,
@@ -738,7 +745,7 @@ func TestClientRoundTripperError(t *testing.T) {
 func TestClientRetryError(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig("0123456789", Config{
+	client, _ := NewWithConfig("0123456789", "https://dataplane.com", Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			nil,
@@ -773,7 +780,7 @@ func TestClientRetryError(t *testing.T) {
 func TestClientResponse400(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig("0123456789", Config{
+	client, _ := NewWithConfig("0123456789", "https://dataplane.com", Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			nil,
@@ -794,7 +801,7 @@ func TestClientResponse400(t *testing.T) {
 func TestClientResponseBodyError(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig("0123456789", Config{
+	client, _ := NewWithConfig("0123456789", "https://dataplane.com", Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			nil,
@@ -819,7 +826,7 @@ func TestClientMaxConcurrentRequests(t *testing.T) {
 	reschan := make(chan bool, 1)
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig("0123456789", Config{
+	client, _ := NewWithConfig("0123456789", "https://dataplane.com", Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			func(m Message) { reschan <- true },

@@ -12,6 +12,7 @@ import (
 func main() {
 	var config struct {
 		WriteKey   string `conf:"writeKey"   help:"The Rudder Write Key of the project to send data to"`
+		DataPlane  string `conf:"dataplane"  help:"The Rudder Dataplane URL"`
 		Type       string `conf:"type"       help:"The type of the message to send"`
 		UserID     string `conf:"userId"     help:"Unique identifier for the user"`
 		GroupID    string `conf:"groupId"    help:"Unique identifier for the group"`
@@ -24,7 +25,7 @@ func main() {
 
 	callback := callback(make(chan error, 1))
 
-	client, err := analytics.NewWithConfig(config.WriteKey, analytics.Config{
+	client, err := analytics.NewWithConfig(config.WriteKey, config.DataPlane, analytics.Config{
 		BatchSize: 1,
 		Callback:  callback,
 	})

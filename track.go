@@ -25,6 +25,10 @@ func (msg Track) internal() {
 	panic(unimplementedError)
 }
 
+func (msg Track) Data() Message {
+	return msg
+}
+
 func (msg Track) Validate() error {
 	if len(msg.Event) == 0 {
 		return FieldError{

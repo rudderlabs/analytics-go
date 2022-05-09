@@ -24,6 +24,10 @@ func (msg Identify) internal() {
 	panic(unimplementedError)
 }
 
+func (msg Identify) Data() Message {
+	return msg
+}
+
 func (msg Identify) Validate() error {
 	if len(msg.UserId) == 0 && len(msg.AnonymousId) == 0 {
 		return FieldError{

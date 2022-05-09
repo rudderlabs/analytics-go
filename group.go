@@ -25,6 +25,10 @@ func (msg Group) internal() {
 	panic(unimplementedError)
 }
 
+func (msg Group) Data() Message {
+	return msg
+}
+
 func (msg Group) Validate() error {
 	if len(msg.GroupId) == 0 {
 		return FieldError{

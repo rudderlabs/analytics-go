@@ -450,7 +450,7 @@ func (c *client) upload(b []byte, targetNode string) error {
 
 	req.Header.Add("User-Agent", "analytics-go (version: "+Version+")")
 	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Content-Length", string(len(b)))
+	req.Header.Add("Content-Length", strconv.Itoa(len(b)))
 	if !c.NoProxySupport {
 		req.Header.Add("RS-targetNode", targetNode)
 		req.Header.Add("RS-nodeCount", strconv.Itoa(c.totalNodes))

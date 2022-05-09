@@ -37,6 +37,9 @@ type Message interface {
 	// nil if the message is valid, or an error describing what went wrong.
 	Validate() error
 
+	// exposees internal anaytics message for caller
+	Data() Message
+
 	// internal is an unexposed interface function to ensure only types defined within this package can satisfy the Message interface. Invoking this method will panic.
 	internal()
 }

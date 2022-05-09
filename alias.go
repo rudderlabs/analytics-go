@@ -23,6 +23,10 @@ func (msg Alias) internal() {
 	panic(unimplementedError)
 }
 
+func (msg Alias) Data() Message {
+	return msg
+}
+
 func (msg Alias) Validate() error {
 	if len(msg.UserId) == 0 {
 		return FieldError{
