@@ -300,7 +300,7 @@ func (c *client) sendAsync(msgs []message, wg *sync.WaitGroup, ex *executor) {
 				c.errorf("panic - %s", err)
 			}
 		}()
-		c.send(msgs)
+		c.send(msgs, 1)
 	}) {
 		wg.Done()
 		c.errorf("sending messages failed - %s", ErrTooManyRequests)
@@ -387,7 +387,7 @@ func (c *client) getMarshalled(msgs []message) ([]byte, error) {
 }
 
 // Send batch request.
-func (c *client) send(msgs []message) {
+func (c *client) send(msgs []message, count int) {
 	const attempts = 10
 
 	nodePayload := c.getNodePayload(msgs)
@@ -418,13 +418,19 @@ func (c *client) send(msgs []message) {
 				We would then reset the node count by making a call to configure-info end point, then regenerate the payload at a node level
 				for only those nodes where we failed in sending the data and then recursively call the send function with the updated payload.
 				*/
-				c.logf("Waiting for 5 seconds")
-				time.Sleep(5 * time.Second)
-				c.logf("Waited for 5 seconds")
-				c.setNodeCount()
-				newMsgs := c.getRevisedMsgs(nodePayload, k)
-				c.send(newMsgs)
-				return
+				var sleepTimeOut = time.Duration(count*5) * time.Second
+				if sleepTimeOut.Seconds() > 300 {
+					c.debugf("Discarding events")
+					return
+				} else {
+					c.debugf("Retrying in %d seconds", count*5)
+					time.Sleep(time.Duration(count*5) * time.Second)
+					c.setNodeCount()
+					newMsgs := c.getRevisedMsgs(nodePayload, k)
+					count += 1
+					c.send(newMsgs, count)
+					return
+				}
 			}
 			if i == attempts-1 {
 				c.errorf("%d messages dropped because they failed to be sent after %d attempts", len(b), attempts)
