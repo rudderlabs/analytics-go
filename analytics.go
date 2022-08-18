@@ -387,7 +387,7 @@ func (c *client) getMarshalled(msgs []message) ([]byte, error) {
 }
 
 // Send batch request.
-func (c *client) send(msgs []message, count int) {
+func (c *client) send(msgs []message, retryAttempt int) {
 	const attempts = 10
 
 	nodePayload := c.getNodePayload(msgs)
@@ -418,17 +418,19 @@ func (c *client) send(msgs []message, count int) {
 				We would then reset the node count by making a call to configure-info end point, then regenerate the payload at a node level
 				for only those nodes where we failed in sending the data and then recursively call the send function with the updated payload.
 				*/
-				var sleepTimeOut = time.Duration(count*5) * time.Second
+				var sleepTimeOut = time.Duration((retryAttempt-1)*5) * time.Second
 				if sleepTimeOut.Seconds() > 300 {
 					c.debugf("Discarding events")
 					return
 				} else {
-					c.debugf("Retrying in %d seconds", count*5)
-					time.Sleep(time.Duration(count*5) * time.Second)
+					if retryAttempt > 1 {
+						c.debugf("Retrying in %d seconds", int(sleepTimeOut.Seconds()))
+						time.Sleep(sleepTimeOut)
+					}
 					c.setNodeCount()
 					newMsgs := c.getRevisedMsgs(nodePayload, k)
-					count += 1
-					c.send(newMsgs, count)
+					retryAttempt += 1
+					c.send(newMsgs, retryAttempt)
 					return
 				}
 			}
