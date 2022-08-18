@@ -300,7 +300,7 @@ func (c *client) sendAsync(msgs []message, wg *sync.WaitGroup, ex *executor) {
 				c.errorf("panic - %s", err)
 			}
 		}()
-		c.send(msgs, 1)
+		c.send(msgs, 0)
 	}) {
 		wg.Done()
 		c.errorf("sending messages failed - %s", ErrTooManyRequests)
