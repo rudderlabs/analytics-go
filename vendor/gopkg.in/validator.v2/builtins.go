@@ -20,16 +20,17 @@ import (
 	"reflect"
 	"regexp"
 	"strconv"
+	"unicode/utf8"
 )
 
 // nonzero tests whether a variable value non-zero
 // as defined by the golang spec.
 func nonzero(v interface{}, param string) error {
 	st := reflect.ValueOf(v)
-	valid := true
+	var valid bool
 	switch st.Kind() {
 	case reflect.String:
-		valid = len(st.String()) != 0
+		valid = utf8.RuneCountInString(st.String()) != 0
 	case reflect.Ptr, reflect.Interface:
 		valid = !st.IsNil()
 	case reflect.Slice, reflect.Map, reflect.Array:
@@ -61,7 +62,7 @@ func nonzero(v interface{}, param string) error {
 // for maps and slices it tests the number of items.
 func length(v interface{}, param string) error {
 	st := reflect.ValueOf(v)
-	valid := true
+	var valid bool
 	if st.Kind() == reflect.Ptr {
 		if st.IsNil() {
 			return nil
@@ -74,7 +75,7 @@ func length(v interface{}, param string) error {
 		if err != nil {
 			return ErrBadParameter
 		}
-		valid = int64(len(st.String())) == p
+		valid = int64(utf8.RuneCountInString(st.String())) == p
 	case reflect.Slice, reflect.Map, reflect.Array:
 		p, err := asInt(param)
 		if err != nil {
@@ -127,7 +128,7 @@ func min(v interface{}, param string) error {
 		if err != nil {
 			return ErrBadParameter
 		}
-		invalid = int64(len(st.String())) < p
+		invalid = int64(utf8.RuneCountInString(st.String())) < p
 	case reflect.Slice, reflect.Map, reflect.Array:
 		p, err := asInt(param)
 		if err != nil {
@@ -180,7 +181,7 @@ func max(v interface{}, param string) error {
 		if err != nil {
 			return ErrBadParameter
 		}
-		invalid = int64(len(st.String())) > p
+		invalid = int64(utf8.RuneCountInString(st.String())) > p
 	case reflect.Slice, reflect.Map, reflect.Array:
 		p, err := asInt(param)
 		if err != nil {
@@ -217,18 +218,17 @@ func max(v interface{}, param string) error {
 // regex is the builtin validation function that checks
 // whether the string variable matches a regular expression
 func regex(v interface{}, param string) error {
-	s, ok := v.(string)
-	if !ok {
-		sptr, ok := v.(*string)
-		if !ok {
-			return ErrUnsupported
-		}
-		if sptr == nil {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr {
+		if rv.IsNil() {
 			return nil
 		}
-		s = *sptr
+		rv = rv.Elem()
 	}
-
+	if rv.Kind() != reflect.String {
+		return ErrUnsupported
+	}
+	s := rv.String()
 	re, err := regexp.Compile(param)
 	if err != nil {
 		return ErrBadParameter
@@ -240,7 +240,7 @@ func regex(v interface{}, param string) error {
 	return nil
 }
 
-// asInt retuns the parameter as a int64
+// asInt returns the parameter as a int64
 // or panics if it can't convert
 func asInt(param string) (int64, error) {
 	i, err := strconv.ParseInt(param, 0, 64)
@@ -250,7 +250,7 @@ func asInt(param string) (int64, error) {
 	return i, nil
 }
 
-// asUint retuns the parameter as a uint64
+// asUint returns the parameter as a uint64
 // or panics if it can't convert
 func asUint(param string) (uint64, error) {
 	i, err := strconv.ParseUint(param, 0, 64)
@@ -260,7 +260,7 @@ func asUint(param string) (uint64, error) {
 	return i, nil
 }
 
-// asFloat retuns the parameter as a float64
+// asFloat returns the parameter as a float64
 // or panics if it can't convert
 func asFloat(param string) (float64, error) {
 	i, err := strconv.ParseFloat(param, 64)
@@ -268,4 +268,22 @@ func asFloat(param string) (float64, error) {
 		return 0.0, ErrBadParameter
 	}
 	return i, nil
+}
+
+// nonnil validates that the given pointer is not nil
+func nonnil(v interface{}, param string) error {
+	st := reflect.ValueOf(v)
+	// if we got a non-pointer then we most likely got
+	// the value for a pointer field, either way, its not
+	// nil
+	switch st.Kind() {
+	case reflect.Ptr, reflect.Interface, reflect.Func:
+		if st.IsNil() {
+			return ErrZeroValue
+		}
+	case reflect.Invalid:
+		// the only way its invalid is if its an interface that's nil
+		return ErrZeroValue
+	}
+	return nil
 }

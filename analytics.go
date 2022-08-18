@@ -418,8 +418,10 @@ func (c *client) send(msgs []message) {
 				We would then reset the node count by making a call to configure-info end point, then regenerate the payload at a node level
 				for only those nodes where we failed in sending the data and then recursively call the send function with the updated payload.
 				*/
-				c.setNodeCount()
+				c.logf("Waiting for 5 seconds")
 				time.Sleep(5 * time.Second)
+				c.logf("Waited for 5 seconds")
+				c.setNodeCount()
 				newMsgs := c.getRevisedMsgs(nodePayload, k)
 				c.send(newMsgs)
 				return
