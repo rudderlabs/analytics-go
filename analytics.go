@@ -419,6 +419,7 @@ func (c *client) send(msgs []message) {
 				for only those nodes where we failed in sending the data and then recursively call the send function with the updated payload.
 				*/
 				c.setNodeCount()
+				time.Sleep(5 * time.Second)
 				newMsgs := c.getRevisedMsgs(nodePayload, k)
 				c.send(newMsgs)
 				return
