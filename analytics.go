@@ -419,20 +419,17 @@ func (c *client) send(msgs []message, retryAttempt int) {
 				for only those nodes where we failed in sending the data and then recursively call the send function with the updated payload.
 				*/
 				var sleepTimeOut = time.Duration((retryAttempt-1)*5) * time.Second
-				if sleepTimeOut.Seconds() > 300 {
-					c.debugf("Discarding events")
-					return
-				} else {
-					if retryAttempt > 1 {
-						c.debugf("Retrying in %d seconds", int(sleepTimeOut.Seconds()))
-						time.Sleep(sleepTimeOut)
-					}
-					c.setNodeCount()
-					newMsgs := c.getRevisedMsgs(nodePayload, k)
-					retryAttempt += 1
-					c.send(newMsgs, retryAttempt)
-					return
+				if retryAttempt > 1 {
+					c.debugf("Retrying in %d seconds", int(sleepTimeOut.Seconds()))
+					time.Sleep(sleepTimeOut)
 				}
+				c.setNodeCount()
+				newMsgs := c.getRevisedMsgs(nodePayload, k)
+				if sleepTimeOut.Seconds() < 300 {
+					retryAttempt += 1
+				}
+				c.send(newMsgs, retryAttempt)
+				return
 			}
 			if i == attempts-1 {
 				c.errorf("%d messages dropped because they failed to be sent after %d attempts", len(b), attempts)
