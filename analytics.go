@@ -429,9 +429,7 @@ func (c *client) send(msgs []message, retryAttempt int) {
 				}
 				c.setNodeCount()
 				newMsgs := c.getRevisedMsgs(nodePayload, k)
-				if sleepTimeOut.Seconds() < 300 {
-					retryAttempt += 1
-				}
+				retryAttempt += 1
 				c.send(newMsgs, retryAttempt)
 				return
 			}
