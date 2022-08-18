@@ -18,7 +18,7 @@ import (
 )
 
 // Version of the client.
-const Version = "3.3.4"
+const Version = "3.3.0"
 const unimplementedError = "not implemented"
 
 // This interface is the main API exposed by the analytics package.
@@ -418,8 +418,8 @@ func (c *client) send(msgs []message, retryAttempt int) {
 				We would then reset the node count by making a call to configure-info end point, then regenerate the payload at a node level
 				for only those nodes where we failed in sending the data and then recursively call the send function with the updated payload.
 				*/
-				const maxSleepTime = 300*time.Second
-				var sleepTimeOut = time.Duration((retryAttempt)*5) * time.Second
+				const maxSleepTime = 300 * time.Second
+				var sleepTimeOut = time.Duration(retryAttempt*5) * time.Second
 				if sleepTimeOut > maxSleepTime {
 					sleepTimeOut = maxSleepTime
 				}
