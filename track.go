@@ -19,6 +19,7 @@ type Track struct {
 	Context      *Context     `json:"context,omitempty"`
 	Properties   Properties   `json:"properties,omitempty"`
 	Integrations Integrations `json:"integrations,omitempty"`
+	Channel      string       `json:"channel,omitempty"`
 }
 
 func (msg Track) Validate() error {

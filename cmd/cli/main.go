@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"github.com/rudderlabs/analytics-go"
+
+	"github.com/rudderlabs/analytics-go/v3"
 	"github.com/segmentio/conf"
 )
 
@@ -21,9 +22,12 @@ func main() {
 	}
 	conf.Load(&config)
 
+	var dataPlaneUrl string
+	conf.Load(&dataPlaneUrl)
+
 	callback := callback(make(chan error, 1))
 
-	client, err := analytics.NewWithConfig(config.WriteKey, analytics.Config{
+	client, err := analytics.NewWithConfig(config.WriteKey, dataPlaneUrl, analytics.Config{
 		BatchSize: 1,
 		Callback:  callback,
 	})

@@ -2,15 +2,31 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"time"
 
-	"github.com/rudderlabs/analytics-go"
+	"github.com/joho/godotenv"
+	"github.com/rudderlabs/analytics-go/v3"
 )
 
+func goDotEnvVariable(key string) string {
+	// load .env file
+	err := godotenv.Load(".env")
+
+	if err != nil {
+		fmt.Println("Error loading .env file")
+	}
+
+	return os.Getenv(key)
+}
+
 func main() {
-	client, _ := analytics.NewWithConfig("1aUR9IELHp6jqOW8HWkrYvMYHWy",
-		"https://218da72a.ngrok.io",
+	// create a .env file inside example directory and add the following variables.
+	WRITE_KEY := goDotEnvVariable("WRITE_KEY")
+	DATA_PLANE_URL := goDotEnvVariable("DATA_PLANE_URL")
+
+	client, _ := analytics.NewWithConfig(WRITE_KEY, DATA_PLANE_URL,
 		analytics.Config{
 			Interval:  30 * time.Second,
 			BatchSize: 100,

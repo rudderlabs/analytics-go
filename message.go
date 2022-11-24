@@ -123,6 +123,6 @@ func (q *messageQueue) flush() (msgs []message) {
 }
 
 const (
-	defMaxBatchBytes   = 500000 // ~500 KB
-	defMaxMessageBytes = 32000  // ~32 KB
+	defMaxBatchBytes   = 512000 // ~500 KB
+	defMaxMessageBytes = 32768  // ~32 KB
 )

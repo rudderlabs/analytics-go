@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"strconv"
 	"sync"
 
@@ -18,8 +17,7 @@ import (
 )
 
 // Version of the client.
-const Version = "3.3.0"
-const unimplementedError = "not implemented"
+const Version = "3.3.3"
 
 // This interface is the main API exposed by the analytics package.
 // Values that satsify this interface are returned by the client constructors
@@ -116,7 +114,7 @@ func makeContext() *Context {
 	context := Context{}
 	context.Library = LibraryInfo{
 		Name:    "analytics-go",
-		Version: "1.0.0",
+		Version: Version,
 	}
 
 	return &context
@@ -191,6 +189,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.Context == nil {
 			m.Context = makeContext()
 		}
+		m.Channel = "server"
 		msg = m
 
 	case Group:
@@ -203,6 +202,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.Context == nil {
 			m.Context = makeContext()
 		}
+		m.Channel = "server"
 		msg = m
 
 	case Identify:
@@ -215,6 +215,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.Context == nil {
 			m.Context = makeContext()
 		}
+		m.Channel = "server"
 		msg = m
 
 	case Page:
@@ -227,6 +228,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.Context == nil {
 			m.Context = makeContext()
 		}
+		m.Channel = "server"
 		msg = m
 
 	case Screen:
@@ -239,6 +241,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.Context == nil {
 			m.Context = makeContext()
 		}
+		m.Channel = "server"
 		msg = m
 
 	case Track:
@@ -251,6 +254,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.Context == nil {
 			m.Context = makeContext()
 		}
+		m.Channel = "server"
 		msg = m
 
 	default:
@@ -308,7 +312,7 @@ func (c *client) sendAsync(msgs []message, wg *sync.WaitGroup, ex *executor) {
 	}
 }
 
-//Split based on Anonymous ID
+// Split based on Anonymous ID
 func (c *client) getNodePayload(msgs []message) map[int][]message {
 	nodePayload := make(map[int][]message)
 	totalNodes := c.totalNodes
@@ -322,7 +326,8 @@ func (c *client) getNodePayload(msgs []message) map[int][]message {
 	return nodePayload
 }
 
-/*In the nodepayload , we have sent the payloads till the nodeValue k,
+/*
+In the nodepayload , we have sent the payloads till the nodeValue k,
 So we get the payloads for remaining nodes to recompuute the nodePayload
 based on the new targetNodes
 */
@@ -330,9 +335,7 @@ func (c *client) getRevisedMsgs(nodePayload map[int][]message, startFrom int) []
 	msgs := make([]message, 0)
 	for k, v := range nodePayload {
 		if k >= startFrom {
-			for _, msg := range v {
-				msgs = append(msgs, msg)
-			}
+			msgs = append(msgs, v...)
 		}
 	}
 	return msgs
@@ -360,7 +363,7 @@ func (c *client) setNodeCount() {
 			continue
 		}
 		if res.StatusCode == 200 {
-			body, err := ioutil.ReadAll(res.Body)
+			body, err := io.ReadAll(res.Body)
 			if err == nil {
 				c.totalNodes = int(gjson.GetBytes(body, "nodeCount").Int())
 				res.Body.Close()
@@ -373,7 +376,6 @@ func (c *client) setNodeCount() {
 			time.Sleep(200 * time.Millisecond)
 		}
 	}
-	return
 }
 
 func (c *client) getMarshalled(msgs []message) ([]byte, error) {
@@ -491,7 +493,7 @@ func (c *client) report(res *http.Response) (err error) {
 		return errors.New(strconv.Itoa(res.StatusCode))
 	}
 
-	if body, err = ioutil.ReadAll(res.Body); err != nil {
+	if body, err = io.ReadAll(res.Body); err != nil {
 		c.errorf("response %d %s - %s", res.StatusCode, res.Status, err)
 		return
 	}
