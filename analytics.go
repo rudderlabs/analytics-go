@@ -380,10 +380,9 @@ func (c *client) setNodeCount() {
 
 func (c *client) getMarshalled(msgs []message) ([]byte, error) {
 	nodeBatch, err := json.Marshal(batch{
-		MessageId: c.uid(),
-		SentAt:    c.now(),
-		Messages:  msgs,
-		Context:   c.DefaultContext,
+		SentAt:   c.now(),
+		Messages: msgs,
+		Context:  c.DefaultContext,
 	})
 	return nodeBatch, err
 }
@@ -586,9 +585,8 @@ func (c *client) errorf(format string, args ...interface{}) {
 
 func (c *client) maxBatchBytes() int {
 	b, _ := json.Marshal(batch{
-		MessageId: c.uid(),
-		SentAt:    c.now(),
-		Context:   c.DefaultContext,
+		SentAt:  c.now(),
+		Context: c.DefaultContext,
 	})
 	return c.MaxBatchBytes - len(b)
 }
