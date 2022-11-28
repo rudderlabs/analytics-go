@@ -6,6 +6,7 @@ on:
 
 jobs:
   build:
+  
     name: Code Quality Checks
     runs-on: ubuntu-latest
     
