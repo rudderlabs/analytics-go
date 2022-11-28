@@ -5,8 +5,8 @@ on:
     types: ['opened', 'reopened', 'synchronize']
 
 jobs:
+
   build:
-  
     name: Code Quality Checks
     runs-on: ubuntu-latest
     
