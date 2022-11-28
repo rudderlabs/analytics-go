@@ -5,19 +5,18 @@ on:
     types: ['opened', 'reopened', 'synchronize']
 
 jobs:
-
   build:
-    name: Code Quality Checks
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: [ '1.15', '1.14', '1.13', '1.12', '1.11' ]
     
     steps:
-      - name: Checkout source branch
-        uses: actions/checkout@v3
-        
-    - name: Set up Go
+      - uses: actions/checkout@v3
+      - name: Setup go
         uses: actions/setup-go@v3
         with:
-          go-version: 1.15
-    
-    - name: Build
+          go-version: ${{ matrix.go }}
+
+      - name: Build Go for v${{ matrix.go }}
         run: go build -v ./...
