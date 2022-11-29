@@ -9,7 +9,15 @@
       },
       "timestamp": "2009-11-10T23:00:00Z",
       "type": "track",
-      "userId": "123456"
+      "userId": "123456",
+      "anonymousId": "123456",
+      "channel": "server",
+      "context": {
+        "library": {
+          "name": "analytics-go",
+          "version": "3.4.0"
+        }
+      }
     },
     {
       "event": "Download",
@@ -20,7 +28,15 @@
       },
       "timestamp": "2009-11-10T23:00:00Z",
       "type": "track",
-      "userId": "123456"
+      "userId": "123456",
+      "anonymousId": "123456",
+      "channel": "server",
+      "context": {
+        "library": {
+          "name": "analytics-go",
+          "version": "3.4.0"
+        }
+      }
     },
     {
       "event": "Download",
@@ -31,15 +47,22 @@
       },
       "timestamp": "2009-11-10T23:00:00Z",
       "type": "track",
-      "userId": "123456"
+      "userId": "123456",
+      "anonymousId": "123456",
+      "channel": "server",
+      "context": {
+        "library": {
+          "name": "analytics-go",
+          "version": "3.4.0"
+        }
+      }
     }
   ],
   "context": {
     "library": {
       "name": "analytics-go",
-      "version": "3.3.0"
+      "version": "3.4.0"
     }
   },
-  "messageId": "I'm unique",
   "sentAt": "2009-11-10T23:00:00Z"
 }

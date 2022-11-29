@@ -20,3 +20,5 @@ jobs:
 
       - name: Build Go ${{ matrix.go }}
         run: go build -v ./...
+      - name: Test Go ${{ matrix.go }}
+        run: go test  . -v
