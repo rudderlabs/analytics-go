@@ -188,10 +188,10 @@ func goDotEnvVariable(key string) string {
 	return os.Getenv(key)
 }
 
-/*func ExampleTrack() {
+func ExampleTrack() {
 	body, server := mockServer()
 	defer server.Close()
-	client, _ := NewWithConfig(WRITE_KEY, DATA_PLANE_URL, Config{
+	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
 		BatchSize: 1,
 		now:       mockTime,
 		uid:       mockId,
@@ -320,7 +320,7 @@ func TestEnqueue(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, DATA_PLANE_URL, Config{
+	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
 		Endpoint:  server.URL,
 		Verbose:   true,
 		Logger:    t,
@@ -340,7 +340,7 @@ func TestEnqueue(t *testing.T) {
 			t.Errorf("%s: invalid response:\n- expected %s\n- received: %s", name, test.ref, res)
 		}
 	}
-}*/
+}
 
 var _ Message = (*customMessage)(nil)
 
@@ -360,7 +360,7 @@ func TestEnqueuingCustomTypeFails(t *testing.T) {
 	}
 }
 
-/*func TestTrackWithInterval(t *testing.T) {
+func TestTrackWithInterval(t *testing.T) {
 	const interval = 100 * time.Millisecond
 	var ref = fixture("test-interval-track.json")
 
@@ -369,7 +369,7 @@ func TestEnqueuingCustomTypeFails(t *testing.T) {
 
 	t0 := time.Now()
 
-	client, _ := NewWithConfig(WRITE_KEY, DATA_PLANE_URL, Config{
+	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
 		Endpoint: server.URL,
 		Interval: interval,
 		Verbose:  true,
@@ -405,7 +405,7 @@ func TestTrackWithTimestamp(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, DATA_PLANE_URL, Config{
+	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
 		Endpoint:  server.URL,
 		Verbose:   true,
 		Logger:    t,
@@ -437,7 +437,7 @@ func TestTrackWithMessageId(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, DATA_PLANE_URL, Config{
+	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
 		Endpoint:  server.URL,
 		Verbose:   true,
 		Logger:    t,
@@ -469,7 +469,7 @@ func TestTrackWithContext(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, DATA_PLANE_URL, Config{
+	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
 		Endpoint:  server.URL,
 		Verbose:   true,
 		Logger:    t,
@@ -505,7 +505,7 @@ func TestTrackMany(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, DATA_PLANE_URL, Config{
+	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
 		Endpoint:  server.URL,
 		Verbose:   true,
 		Logger:    t,
@@ -537,7 +537,7 @@ func TestTrackWithIntegrations(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, DATA_PLANE_URL, Config{
+	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
 		Endpoint:  server.URL,
 		Verbose:   true,
 		Logger:    t,
@@ -565,7 +565,7 @@ func TestTrackWithIntegrations(t *testing.T) {
 	if res := string(<-body); ref != res {
 		t.Errorf("invalid response:\n- expected %s\n- received: %s", ref, res)
 	}
-}*/
+}
 
 func TestClientCloseTwice(t *testing.T) {
 	client := New(WRITE_KEY, DATA_PLANE_URL)
@@ -695,10 +695,10 @@ func TestClientMarshalContextError(t *testing.T) {
 	}
 }
 
-/*func TestClientNewRequestError(t *testing.T) {
+func TestClientNewRequestError(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig(WRITE_KEY, DATA_PLANE_URL, Config{
+	client, _ := NewWithConfig(WRITE_KEY, "://localhost:80", Config{
 		Endpoint: "://localhost:80", // Malformed endpoint URL.
 		Logger:   testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
@@ -714,7 +714,7 @@ func TestClientMarshalContextError(t *testing.T) {
 	if err := <-errchan; err == nil {
 		t.Error("failure callback not triggered for an invalid request")
 	}
-}*/
+}
 
 func TestClientRoundTripperError(t *testing.T) {
 	errchan := make(chan error, 1)
