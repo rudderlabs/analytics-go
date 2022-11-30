@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -156,7 +157,9 @@ func mockServer() (chan []byte, *httptest.Server) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		buf := bytes.NewBuffer(nil)
-		io.Copy(buf, r.Body)
+		reader, _ := gzip.NewReader(r.Body)
+		defer reader.Close()
+		io.Copy(buf, reader)
 
 		var v interface{}
 		err := json.Unmarshal(buf.Bytes(), &v)

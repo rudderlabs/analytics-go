@@ -507,10 +507,6 @@ func (c *client) upload(b []byte, targetNode string) error {
 	return c.report(res)
 }
 
-func PanicIfErr(err error) {
-	panic("unimplemented")
-}
-
 // Report on response body.
 func (c *client) report(res *http.Response) (err error) {
 	var body []byte
