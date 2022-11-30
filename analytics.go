@@ -1,6 +1,7 @@
 package analytics
 
 import (
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -18,6 +19,9 @@ import (
 
 // Version of the client.
 const Version = "3.4.0"
+
+// Support for gzip.
+const GzipSupport = false
 
 // This interface is the main API exposed by the analytics package.
 // Values that satsify this interface are returned by the client constructors
@@ -453,12 +457,35 @@ func (c *client) send(msgs []message, retryAttempt int) {
 // Upload serialized batch message.
 func (c *client) upload(b []byte, targetNode string) error {
 	url := c.Endpoint + "/v1/batch"
-	req, err := http.NewRequest("POST", url, bytes.NewReader(b))
+	gzipPayload := func(data []byte) (io.Reader, error) {
+		var b bytes.Buffer
+		gz := gzip.NewWriter(&b)
+		_, err := gz.Write(data)
+		if err != nil {
+			return nil, err
+		}
+		if err = gz.Flush(); err != nil {
+			return nil, err
+		}
+		if err = gz.Close(); err != nil {
+			return nil, err
+		}
+		return &b, nil
+	}
+
+	payload, err := gzipPayload(b)
+	if err != nil {
+		c.errorf("gzip payload - %s", err)
+		return err
+	}
+
+	req, err := http.NewRequest("POST", url, payload)
 	if err != nil {
 		c.errorf("creating request - %s", err)
 		return err
 	}
 
+	req.Header.Add("Content-Encoding", "gzip")
 	req.Header.Add("User-Agent", "analytics-go (version: "+Version+")")
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("Content-Length", strconv.Itoa(len(b)))
@@ -478,6 +505,10 @@ func (c *client) upload(b []byte, targetNode string) error {
 
 	defer res.Body.Close()
 	return c.report(res)
+}
+
+func PanicIfErr(err error) {
+	panic("unimplemented")
 }
 
 // Report on response body.
