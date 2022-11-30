@@ -20,9 +20,6 @@ import (
 // Version of the client.
 const Version = "3.4.0"
 
-// Support for gzip.
-const GzipSupport = false
-
 // This interface is the main API exposed by the analytics package.
 // Values that satsify this interface are returned by the client constructors
 // provided by the package and provide a way to send messages via the HTTP API.
