@@ -18,7 +18,7 @@ import (
 )
 
 // Version of the client.
-const Version = "3.4.0"
+const Version = "4.0.0"
 
 // This interface is the main API exposed by the analytics package.
 // Values that satsify this interface are returned by the client constructors
@@ -456,12 +456,8 @@ func (c *client) upload(b []byte, targetNode string) error {
 	url := c.Endpoint + "/v1/batch"
 	gzipPayload := func(data []byte) (io.Reader, error) {
 		var b bytes.Buffer
-		gz := gzip.NewWriter(&b)
-		_, err := gz.Write(data)
+		gz, err := gzip.NewWriterLevel(&b, gzip.BestSpeed)
 		if err != nil {
-			return nil, err
-		}
-		if err = gz.Flush(); err != nil {
 			return nil, err
 		}
 		if err = gz.Close(); err != nil {
