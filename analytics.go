@@ -460,6 +460,9 @@ func (c *client) upload(b []byte, targetNode string) error {
 		if err != nil {
 			return nil, err
 		}
+		if _, err := gz.Write(data); err != nil {
+			return nil, err
+		}
 		if err = gz.Close(); err != nil {
 			return nil, err
 		}
