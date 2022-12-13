@@ -152,14 +152,18 @@ func mockTime() time.Time {
 	return time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
 }
 
-func mockServer() (chan []byte, *httptest.Server) {
+func mockServer(gzipSupport bool) (chan []byte, *httptest.Server) {
 	done := make(chan []byte, 1)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		buf := bytes.NewBuffer(nil)
-		reader, _ := gzip.NewReader(r.Body)
-		defer reader.Close()
-		io.Copy(buf, reader)
+		if gzipSupport {
+			reader, _ := gzip.NewReader(r.Body)
+			defer reader.Close()
+			io.Copy(buf, reader)
+		} else {
+			io.Copy(buf, r.Body)
+		}
 
 		var v interface{}
 		err := json.Unmarshal(buf.Bytes(), &v)
@@ -196,7 +200,7 @@ func AreEqualJSON(s1, s2 string) (bool, error) {
 }
 
 func ExampleTrack() {
-	body, server := mockServer()
+	body, server := mockServer(false)
 	defer server.Close()
 	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
 		BatchSize: 1,
@@ -204,6 +208,8 @@ func ExampleTrack() {
 		uid:       mockId,
 	})
 	defer client.Close()
+
+	client.SetGZIP(false)
 
 	client.Enqueue(Track{
 		Event:  "Download",
@@ -225,7 +231,7 @@ func ExampleTrack() {
 	//       "context": {
 	//         "library": {
 	//           "name": "analytics-go",
-	//           "version": "3.4.0"
+	//           "version": "4.0.0"
 	//         }
 	//       },
 	//       "event": "Download",
@@ -243,7 +249,7 @@ func ExampleTrack() {
 	//   "context": {
 	//     "library": {
 	//       "name": "analytics-go",
-	//       "version": "3.4.0"
+	//       "version": "4.0.0"
 	//     }
 	//   },
 	//   "sentAt": "2009-11-10T23:00:00Z"
@@ -331,7 +337,7 @@ func TestEnqueue(t *testing.T) {
 		},
 	}
 
-	body, server := mockServer()
+	body, server := mockServer(false)
 	defer server.Close()
 
 	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
@@ -343,6 +349,8 @@ func TestEnqueue(t *testing.T) {
 		uid:       mockId,
 	})
 	defer client.Close()
+
+	client.SetGZIP(false)
 
 	for name, test := range tests {
 		if err := client.Enqueue(test.msg); err != nil {
@@ -379,7 +387,7 @@ func TestTrackWithInterval(t *testing.T) {
 	const interval = 100 * time.Millisecond
 	var ref = fixture("test-interval-track.json")
 
-	body, server := mockServer()
+	body, server := mockServer(false)
 	defer server.Close()
 
 	t0 := time.Now()
@@ -393,6 +401,8 @@ func TestTrackWithInterval(t *testing.T) {
 		uid:      mockId,
 	})
 	defer client.Close()
+
+	client.SetGZIP(false)
 
 	client.Enqueue(Track{
 		Event:  "Download",
@@ -418,7 +428,7 @@ func TestTrackWithInterval(t *testing.T) {
 func TestTrackWithTimestamp(t *testing.T) {
 	var ref = fixture("test-timestamp-track.json")
 
-	body, server := mockServer()
+	body, server := mockServer(false)
 	defer server.Close()
 
 	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
@@ -430,6 +440,8 @@ func TestTrackWithTimestamp(t *testing.T) {
 		uid:       mockId,
 	})
 	defer client.Close()
+
+	client.SetGZIP(false)
 
 	client.Enqueue(Track{
 		Event:  "Download",
@@ -448,10 +460,10 @@ func TestTrackWithTimestamp(t *testing.T) {
 	}
 }
 
-func TestTrackWithMessageId(t *testing.T) {
+func TestGzipSupport(t *testing.T) {
 	var ref = fixture("test-messageid-track.json")
 
-	body, server := mockServer()
+	body, server := mockServer(true)
 	defer server.Close()
 
 	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
@@ -463,6 +475,43 @@ func TestTrackWithMessageId(t *testing.T) {
 		uid:       mockId,
 	})
 	defer client.Close()
+
+	client.SetGZIP(true)
+
+	client.Enqueue(Track{
+		Event:  "Download",
+		UserId: "123456",
+		Properties: Properties{
+			"application": "Rudder Desktop",
+			"version":     "1.1.0",
+			"platform":    "osx",
+		},
+		MessageId: "abc",
+	})
+
+	res := string(<-body)
+	if areEqual, _ := AreEqualJSON(res, ref); areEqual == false {
+		t.Errorf("invalid response:\n- expected %s\n- received: %s", ref, res)
+	}
+}
+
+func TestTrackWithMessageId(t *testing.T) {
+	var ref = fixture("test-messageid-track.json")
+
+	body, server := mockServer(false)
+	defer server.Close()
+
+	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
+		Endpoint:  server.URL,
+		Verbose:   true,
+		Logger:    t,
+		BatchSize: 1,
+		now:       mockTime,
+		uid:       mockId,
+	})
+	defer client.Close()
+
+	client.SetGZIP(false)
 
 	client.Enqueue(Track{
 		Event:  "Download",
@@ -484,7 +533,7 @@ func TestTrackWithMessageId(t *testing.T) {
 func TestTrackWithContext(t *testing.T) {
 	var ref = fixture("test-context-track.json")
 
-	body, server := mockServer()
+	body, server := mockServer(false)
 	defer server.Close()
 
 	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
@@ -496,6 +545,8 @@ func TestTrackWithContext(t *testing.T) {
 		uid:       mockId,
 	})
 	defer client.Close()
+
+	client.SetGZIP(false)
 
 	client.Enqueue(Track{
 		Event:  "Download",
@@ -521,7 +572,7 @@ func TestTrackWithContext(t *testing.T) {
 func TestTrackMany(t *testing.T) {
 	var ref = fixture("test-many-track.json")
 
-	body, server := mockServer()
+	body, server := mockServer(false)
 	defer server.Close()
 
 	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
@@ -533,6 +584,8 @@ func TestTrackMany(t *testing.T) {
 		uid:       mockId,
 	})
 	defer client.Close()
+
+	client.SetGZIP(false)
 
 	for i := 0; i < 5; i++ {
 		client.Enqueue(Track{
@@ -554,7 +607,7 @@ func TestTrackMany(t *testing.T) {
 func TestTrackWithIntegrations(t *testing.T) {
 	var ref = fixture("test-integrations-track.json")
 
-	body, server := mockServer()
+	body, server := mockServer(false)
 	defer server.Close()
 
 	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
@@ -566,6 +619,8 @@ func TestTrackWithIntegrations(t *testing.T) {
 		uid:       mockId,
 	})
 	defer client.Close()
+
+	client.SetGZIP(false)
 
 	client.Enqueue(Track{
 		Event:  "Download",

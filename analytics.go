@@ -20,6 +20,10 @@ import (
 // Version of the client.
 const Version = "4.0.0"
 
+// This constant sets the default gzip support to true used by client instances if
+// none was explicitly set.
+var GzipSupport = true
+
 // This interface is the main API exposed by the analytics package.
 // Values that satsify this interface are returned by the client constructors
 // provided by the package and provide a way to send messages via the HTTP API.
@@ -41,6 +45,9 @@ type Client interface {
 	// happens if the client was already closed at the time the method was
 	// called or if the message was malformed.
 	Enqueue(Message) error
+
+	// This method for disable/enable gzip support.
+	SetGZIP(bool)
 }
 
 type client struct {
@@ -99,6 +106,10 @@ func NewWithConfig(writeKey string, dataPlaneUrl string, config Config) (cli Cli
 
 	cli = c
 	return
+}
+
+func (c *client) SetGZIP(gzip bool) {
+	GzipSupport = gzip
 }
 
 func makeHttpClient(transport http.RoundTripper) http.Client {
@@ -454,34 +465,42 @@ func (c *client) send(msgs []message, retryAttempt int) {
 // Upload serialized batch message.
 func (c *client) upload(b []byte, targetNode string) error {
 	url := c.Endpoint + "/v1/batch"
-	gzipPayload := func(data []byte) (io.Reader, error) {
-		var b bytes.Buffer
-		gz, err := gzip.NewWriterLevel(&b, gzip.BestSpeed)
+	var (
+		req      *http.Request
+		reqError error
+	)
+	if GzipSupport {
+		gzipPayload := func(data []byte) (io.Reader, error) {
+			var b bytes.Buffer
+			gz, err := gzip.NewWriterLevel(&b, gzip.BestSpeed)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := gz.Write(data); err != nil {
+				return nil, err
+			}
+			if err = gz.Close(); err != nil {
+				return nil, err
+			}
+			return &b, nil
+		}
+
+		payload, err := gzipPayload(b)
 		if err != nil {
-			return nil, err
+			c.errorf("gzip payload - %s", err)
+			return err
 		}
-		if _, err := gz.Write(data); err != nil {
-			return nil, err
-		}
-		if err = gz.Close(); err != nil {
-			return nil, err
-		}
-		return &b, nil
+		req, reqError = http.NewRequest("POST", url, payload)
+		req.Header.Add("Content-Encoding", "gzip")
+	} else {
+		req, reqError = http.NewRequest("POST", url, bytes.NewReader(b))
 	}
 
-	payload, err := gzipPayload(b)
-	if err != nil {
-		c.errorf("gzip payload - %s", err)
-		return err
+	if reqError != nil {
+		c.errorf("creating request - %s", reqError)
+		return reqError
 	}
 
-	req, err := http.NewRequest("POST", url, payload)
-	if err != nil {
-		c.errorf("creating request - %s", err)
-		return err
-	}
-
-	req.Header.Add("Content-Encoding", "gzip")
 	req.Header.Add("User-Agent", "analytics-go (version: "+Version+")")
 	req.Header.Add("Content-Type", "application/json")
 	req.Header.Add("Content-Length", strconv.Itoa(len(b)))
