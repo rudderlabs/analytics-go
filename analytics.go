@@ -20,10 +20,6 @@ import (
 // Version of the client.
 const Version = "4.0.0"
 
-// This constant sets the default gzip support to true used by client instances if
-// none was explicitly set.
-var GzipSupport = true
-
 // This interface is the main API exposed by the analytics package.
 // Values that satsify this interface are returned by the client constructors
 // provided by the package and provide a way to send messages via the HTTP API.
@@ -47,7 +43,7 @@ type Client interface {
 	Enqueue(Message) error
 
 	// This method for disable/enable gzip support.
-	SetGZIP(bool)
+	WithGZIP(bool)
 }
 
 type client struct {
@@ -70,6 +66,8 @@ type client struct {
 	// This HTTP client is used to send requests to the backend, it uses the
 	// HTTP transport provided in the configuration.
 	http http.Client
+
+	gzipSupport bool
 }
 
 // Instantiate a new client that uses the write key passed as first argument to
@@ -102,14 +100,16 @@ func NewWithConfig(writeKey string, dataPlaneUrl string, config Config) (cli Cli
 		http:     makeHttpClient(config.Transport),
 	}
 	c.totalNodes = 1
+	// This sets the default gzip support to true used by client instances
+	c.gzipSupport = true
 	go c.loop()
 
 	cli = c
 	return
 }
 
-func (c *client) SetGZIP(gzip bool) {
-	GzipSupport = gzip
+func (c *client) WithGZIP(gzip bool) {
+	c.gzipSupport = gzip
 }
 
 func makeHttpClient(transport http.RoundTripper) http.Client {
@@ -469,7 +469,7 @@ func (c *client) upload(b []byte, targetNode string) error {
 		req      *http.Request
 		reqError error
 	)
-	if GzipSupport {
+	if c.gzipSupport {
 		gzipPayload := func(data []byte) (io.Reader, error) {
 			var b bytes.Buffer
 			gz, err := gzip.NewWriterLevel(&b, gzip.BestSpeed)
