@@ -445,7 +445,7 @@ func TestTrackWithTimestamp(t *testing.T) {
 	}
 }
 
-func TestGzipSupport(t *testing.T) {
+func TestEnableGzipSupport(t *testing.T) {
 	var ref = fixture("test-messageid-track.json")
 
 	body, server := mockServer()
@@ -460,6 +460,40 @@ func TestGzipSupport(t *testing.T) {
 		uid:       mockId,
 	})
 	defer client.Close()
+
+	client.Enqueue(Track{
+		Event:  "Download",
+		UserId: "123456",
+		Properties: Properties{
+			"application": "Rudder Desktop",
+			"version":     "1.1.0",
+			"platform":    "osx",
+		},
+		MessageId: "abc",
+	})
+
+	res := string(<-body)
+	if areEqual, _ := AreEqualJSON(res, ref); areEqual == false {
+		t.Errorf("invalid response:\n- expected %s\n- received: %s", ref, res)
+	}
+}
+
+func TestDisableGzipSupport(t *testing.T) {
+	var ref = fixture("test-messageid-track.json")
+
+	body, server := mockServer()
+	defer server.Close()
+
+	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
+		Endpoint:  server.URL,
+		Verbose:   true,
+		Logger:    t,
+		BatchSize: 1,
+		now:       mockTime,
+		uid:       mockId,
+	})
+	defer client.Close()
+	client.WithGZIP(false)
 
 	client.Enqueue(Track{
 		Event:  "Download",
