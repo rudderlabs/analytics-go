@@ -243,14 +243,7 @@ func ExampleTrack() {
 	//       "type": "track",
 	//       "userId": "123456"
 	//     }
-	//   ],
-	//   "context": {
-	//     "library": {
-	//       "name": "analytics-go",
-	//       "version": "4.0.0"
-	//     }
-	//   },
-	//   "sentAt": "2009-11-10T23:00:00Z"
+	//   ]
 	// }
 }
 
@@ -721,35 +714,6 @@ func TestClientMarshalMessageError(t *testing.T) {
 
 	} else if _, ok := err.(*json.UnsupportedTypeError); !ok {
 		t.Errorf("invalid error type returned by unserializable message: %T", err)
-	}
-}
-
-func TestClientMarshalContextError(t *testing.T) {
-	errchan := make(chan error, 1)
-
-	client, _ := NewWithConfig(WRITE_KEY, "", Config{
-		Logger: testLogger{t.Logf, t.Logf},
-		Callback: testCallback{
-			nil,
-			func(m Message, e error) { errchan <- e },
-		},
-		DefaultContext: &Context{
-			// The context set on the batch message is invalid this should also
-			// cause the batched message to fail to be serialized and call the
-			// failure callback.
-			Extra: map[string]interface{}{"invalid": func() {}},
-		},
-		Transport: testTransportOK,
-	})
-
-	client.Enqueue(Track{UserId: "A", Event: "B"})
-	client.Close()
-
-	if err := <-errchan; err == nil {
-		t.Error("failure callback not triggered for unserializable context")
-
-	} else if _, ok := err.(*json.MarshalerError); !ok {
-		t.Errorf("invalid error type returned by unserializable context: %T", err)
 	}
 }
 
