@@ -41,9 +41,6 @@ type Client interface {
 	// happens if the client was already closed at the time the method was
 	// called or if the message was malformed.
 	Enqueue(Message) error
-
-	// This method for disable/enable gzip support.
-	WithGZIP(bool)
 }
 
 type client struct {
@@ -66,16 +63,14 @@ type client struct {
 	// This HTTP client is used to send requests to the backend, it uses the
 	// HTTP transport provided in the configuration.
 	http http.Client
-
-	gzipSupport bool
 }
 
 // Instantiate a new client that uses the write key passed as first argument to
 // send messages to the backend.
 // The client is created with the default configuration.
-func New(writeKey string, dataPlaneUrl string) Client {
+func New(writeKey string) Client {
 	// Here we can ignore the error because the default config is always valid.
-	c, _ := NewWithConfig(writeKey, dataPlaneUrl, Config{})
+	c, _ := NewWithConfig(writeKey, Config{})
 	return c
 }
 
@@ -84,12 +79,10 @@ func New(writeKey string, dataPlaneUrl string) Client {
 // The function will return an error if the configuration contained impossible
 // values (like a negative flush interval for example).
 // When the function returns an error the returned client will always be nil.
-func NewWithConfig(writeKey string, dataPlaneUrl string, config Config) (cli Client, err error) {
+func NewWithConfig(writeKey string, config Config) (cli Client, err error) {
 	if err = config.validate(); err != nil {
 		return
 	}
-
-	config.Endpoint = dataPlaneUrl
 
 	c := &client{
 		Config:   makeConfig(config),
@@ -100,16 +93,11 @@ func NewWithConfig(writeKey string, dataPlaneUrl string, config Config) (cli Cli
 		http:     makeHttpClient(config.Transport),
 	}
 	c.totalNodes = 1
-	// This sets the default gzip support to true used by client instances
-	c.gzipSupport = true
+
 	go c.loop()
 
 	cli = c
 	return
-}
-
-func (c *client) WithGZIP(gzip bool) {
-	c.gzipSupport = gzip
 }
 
 func makeHttpClient(transport http.RoundTripper) http.Client {
@@ -467,7 +455,7 @@ func (c *client) upload(b []byte, targetNode string) error {
 		req      *http.Request
 		reqError error
 	)
-	if c.gzipSupport {
+	if c.Config.Gzip == 0 {
 		gzipPayload := func(data []byte) (io.Reader, error) {
 			var b bytes.Buffer
 			gz, err := gzip.NewWriterLevel(&b, gzip.BestSpeed)

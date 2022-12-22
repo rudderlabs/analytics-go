@@ -202,10 +202,11 @@ func AreEqualJSON(s1, s2 string) (bool, error) {
 func ExampleTrack() {
 	body, server := mockServer()
 	defer server.Close()
-	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
-		BatchSize: 1,
-		now:       mockTime,
-		uid:       mockId,
+	client, _ := NewWithConfig(WRITE_KEY, Config{
+		DataPlaneUrl: server.URL,
+		BatchSize:    1,
+		now:          mockTime,
+		uid:          mockId,
 	})
 	defer client.Close()
 
@@ -331,13 +332,13 @@ func TestEnqueue(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
-		Endpoint:  server.URL,
-		Verbose:   true,
-		Logger:    t,
-		BatchSize: 1,
-		now:       mockTime,
-		uid:       mockId,
+	client, _ := NewWithConfig(WRITE_KEY, Config{
+		DataPlaneUrl: server.URL,
+		Verbose:      true,
+		Logger:       t,
+		BatchSize:    1,
+		now:          mockTime,
+		uid:          mockId,
 	})
 	defer client.Close()
 
@@ -364,7 +365,7 @@ func (c *customMessage) Validate() error {
 }
 
 func TestEnqueuingCustomTypeFails(t *testing.T) {
-	client := New(WRITE_KEY, "")
+	client := New(WRITE_KEY)
 	err := client.Enqueue(&customMessage{})
 
 	if err.Error() != "messages with custom types cannot be enqueued: *analytics.customMessage" {
@@ -381,13 +382,13 @@ func TestTrackWithInterval(t *testing.T) {
 
 	t0 := time.Now()
 
-	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
-		Endpoint: server.URL,
-		Interval: interval,
-		Verbose:  true,
-		Logger:   t,
-		now:      mockTime,
-		uid:      mockId,
+	client, _ := NewWithConfig(WRITE_KEY, Config{
+		DataPlaneUrl: server.URL,
+		Interval:     interval,
+		Verbose:      true,
+		Logger:       t,
+		now:          mockTime,
+		uid:          mockId,
 	})
 	defer client.Close()
 
@@ -418,13 +419,13 @@ func TestTrackWithTimestamp(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
-		Endpoint:  server.URL,
-		Verbose:   true,
-		Logger:    t,
-		BatchSize: 1,
-		now:       mockTime,
-		uid:       mockId,
+	client, _ := NewWithConfig(WRITE_KEY, Config{
+		DataPlaneUrl: server.URL,
+		Verbose:      true,
+		Logger:       t,
+		BatchSize:    1,
+		now:          mockTime,
+		uid:          mockId,
 	})
 	defer client.Close()
 
@@ -451,13 +452,13 @@ func TestEnableGzipSupport(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
-		Endpoint:  server.URL,
-		Verbose:   true,
-		Logger:    t,
-		BatchSize: 1,
-		now:       mockTime,
-		uid:       mockId,
+	client, _ := NewWithConfig(WRITE_KEY, Config{
+		DataPlaneUrl: server.URL,
+		Verbose:      true,
+		Logger:       t,
+		BatchSize:    1,
+		now:          mockTime,
+		uid:          mockId,
 	})
 	defer client.Close()
 
@@ -484,16 +485,16 @@ func TestDisableGzipSupport(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
-		Endpoint:  server.URL,
-		Verbose:   true,
-		Logger:    t,
-		BatchSize: 1,
-		now:       mockTime,
-		uid:       mockId,
+	client, _ := NewWithConfig(WRITE_KEY, Config{
+		DataPlaneUrl: server.URL,
+		Verbose:      true,
+		Logger:       t,
+		BatchSize:    1,
+		now:          mockTime,
+		uid:          mockId,
+		Gzip:         1,
 	})
 	defer client.Close()
-	client.WithGZIP(false)
 
 	client.Enqueue(Track{
 		Event:  "Download",
@@ -518,13 +519,13 @@ func TestTrackWithMessageId(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
-		Endpoint:  server.URL,
-		Verbose:   true,
-		Logger:    t,
-		BatchSize: 1,
-		now:       mockTime,
-		uid:       mockId,
+	client, _ := NewWithConfig(WRITE_KEY, Config{
+		DataPlaneUrl: server.URL,
+		Verbose:      true,
+		Logger:       t,
+		BatchSize:    1,
+		now:          mockTime,
+		uid:          mockId,
 	})
 	defer client.Close()
 
@@ -551,13 +552,13 @@ func TestTrackWithContext(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
-		Endpoint:  server.URL,
-		Verbose:   true,
-		Logger:    t,
-		BatchSize: 1,
-		now:       mockTime,
-		uid:       mockId,
+	client, _ := NewWithConfig(WRITE_KEY, Config{
+		DataPlaneUrl: server.URL,
+		Verbose:      true,
+		Logger:       t,
+		BatchSize:    1,
+		now:          mockTime,
+		uid:          mockId,
 	})
 	defer client.Close()
 
@@ -588,13 +589,13 @@ func TestTrackMany(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
-		Endpoint:  server.URL,
-		Verbose:   true,
-		Logger:    t,
-		BatchSize: 3,
-		now:       mockTime,
-		uid:       mockId,
+	client, _ := NewWithConfig(WRITE_KEY, Config{
+		DataPlaneUrl: server.URL,
+		Verbose:      true,
+		Logger:       t,
+		BatchSize:    3,
+		now:          mockTime,
+		uid:          mockId,
 	})
 	defer client.Close()
 
@@ -621,13 +622,13 @@ func TestTrackWithIntegrations(t *testing.T) {
 	body, server := mockServer()
 	defer server.Close()
 
-	client, _ := NewWithConfig(WRITE_KEY, server.URL, Config{
-		Endpoint:  server.URL,
-		Verbose:   true,
-		Logger:    t,
-		BatchSize: 1,
-		now:       mockTime,
-		uid:       mockId,
+	client, _ := NewWithConfig(WRITE_KEY, Config{
+		DataPlaneUrl: server.URL,
+		Verbose:      true,
+		Logger:       t,
+		BatchSize:    1,
+		now:          mockTime,
+		uid:          mockId,
 	})
 	defer client.Close()
 
@@ -653,7 +654,7 @@ func TestTrackWithIntegrations(t *testing.T) {
 }
 
 func TestClientCloseTwice(t *testing.T) {
-	client := New(WRITE_KEY, "")
+	client := New(WRITE_KEY)
 
 	if err := client.Close(); err != nil {
 		t.Error("closing a client should not a return an error")
@@ -669,7 +670,7 @@ func TestClientCloseTwice(t *testing.T) {
 }
 
 func TestClientConfigError(t *testing.T) {
-	client, err := NewWithConfig(WRITE_KEY, "", Config{
+	client, err := NewWithConfig(WRITE_KEY, Config{
 		Interval: -1 * time.Second,
 	})
 
@@ -688,7 +689,7 @@ func TestClientConfigError(t *testing.T) {
 }
 
 func TestClientEnqueueError(t *testing.T) {
-	client := New(WRITE_KEY, "")
+	client := New(WRITE_KEY)
 	defer client.Close()
 
 	if err := client.Enqueue(testErrorMessage{}); err != errorTest {
@@ -700,7 +701,7 @@ func TestClientCallback(t *testing.T) {
 	reschan := make(chan bool, 1)
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig(WRITE_KEY, "", Config{
+	client, _ := NewWithConfig(WRITE_KEY, Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			func(m Message) { reschan <- true },
@@ -725,7 +726,7 @@ func TestClientCallback(t *testing.T) {
 func TestClientMarshalMessageError(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig(WRITE_KEY, "", Config{
+	client, _ := NewWithConfig(WRITE_KEY, Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			nil,
@@ -754,16 +755,16 @@ func TestClientMarshalMessageError(t *testing.T) {
 func TestClientNewRequestError(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig(WRITE_KEY, "://localhost:80", Config{
-		Endpoint: "://localhost:80", // Malformed endpoint URL.
-		Logger:   testLogger{t.Logf, t.Logf},
+	client, _ := NewWithConfig(WRITE_KEY, Config{
+		DataPlaneUrl: "://localhost:80", // Malformed endpoint URL.
+		Logger:       testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			nil,
 			func(m Message, e error) { errchan <- e },
 		},
 		Transport: testTransportOK,
+		Gzip:      1,
 	})
-	client.WithGZIP(false)
 
 	client.Enqueue(Track{UserId: "A", Event: "B"})
 	client.Close()
@@ -776,7 +777,7 @@ func TestClientNewRequestError(t *testing.T) {
 func TestClientRoundTripperError(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig(WRITE_KEY, "", Config{
+	client, _ := NewWithConfig(WRITE_KEY, Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			nil,
@@ -802,7 +803,7 @@ func TestClientRoundTripperError(t *testing.T) {
 func TestClientRetryError(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig(WRITE_KEY, "", Config{
+	client, _ := NewWithConfig(WRITE_KEY, Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			nil,
@@ -837,7 +838,7 @@ func TestClientRetryError(t *testing.T) {
 func TestClientResponse400(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig(WRITE_KEY, "", Config{
+	client, _ := NewWithConfig(WRITE_KEY, Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			nil,
@@ -858,7 +859,7 @@ func TestClientResponse400(t *testing.T) {
 func TestClientResponseBodyError(t *testing.T) {
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig(WRITE_KEY, "", Config{
+	client, _ := NewWithConfig(WRITE_KEY, Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			nil,
@@ -883,7 +884,7 @@ func TestClientMaxConcurrentRequests(t *testing.T) {
 	reschan := make(chan bool, 1)
 	errchan := make(chan error, 1)
 
-	client, _ := NewWithConfig(WRITE_KEY, "", Config{
+	client, _ := NewWithConfig(WRITE_KEY, Config{
 		Logger: testLogger{t.Logf, t.Logf},
 		Callback: testCallback{
 			func(m Message) { reschan <- true },
