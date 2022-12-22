@@ -129,7 +129,8 @@ var (
 		return nil, errorTest
 	})
 
-	WRITE_KEY = "WRITE_KEY"
+	WRITE_KEY      = "WRITE_KEY"
+	DATA_PLANE_URL = "DATA_PLANE_URL"
 )
 
 func fixture(name string) string {
@@ -365,7 +366,7 @@ func (c *customMessage) Validate() error {
 }
 
 func TestEnqueuingCustomTypeFails(t *testing.T) {
-	client := New(WRITE_KEY)
+	client := New(WRITE_KEY, DATA_PLANE_URL)
 	err := client.Enqueue(&customMessage{})
 
 	if err.Error() != "messages with custom types cannot be enqueued: *analytics.customMessage" {
@@ -654,7 +655,7 @@ func TestTrackWithIntegrations(t *testing.T) {
 }
 
 func TestClientCloseTwice(t *testing.T) {
-	client := New(WRITE_KEY)
+	client := New(WRITE_KEY, DATA_PLANE_URL)
 
 	if err := client.Close(); err != nil {
 		t.Error("closing a client should not a return an error")
@@ -689,7 +690,7 @@ func TestClientConfigError(t *testing.T) {
 }
 
 func TestClientEnqueueError(t *testing.T) {
-	client := New(WRITE_KEY)
+	client := New(WRITE_KEY, DATA_PLANE_URL)
 	defer client.Close()
 
 	if err := client.Enqueue(testErrorMessage{}); err != errorTest {
