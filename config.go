@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/segmentio/backo-go"
-	"github.com/xtgo/uuid"
 )
 
 // Instances of this type carry the different configuration options that may
@@ -15,9 +15,12 @@ import (
 // default value defined by the library.
 type Config struct {
 
+	// Deprecated: Endpoint is deprecated, will be removed in next releases. Use DataPlaneUrl.
+	Endpoint string
+
 	// The endpoint to which the client connect and send their messages, set to
 	// `DefaultEndpoint` by default.
-	Endpoint string
+	DataPlaneUrl string
 
 	// The flushing interval of the client. Messages will be sent when they've
 	// been queued up to the maximum batch size or when the flushing interval
@@ -88,12 +91,15 @@ type Config struct {
 
 	// Maximum bytes in a batch
 	MaxBatchBytes int
+
+	// Disable/enable gzip support. 0 = Enable, 1 = Disable
+	Gzip int
 }
 
 // This constant sets the default endpoint to which client instances send
 // messages if none was explictly set.
 
-const DefaultEndpoint = ""
+const DefaultEndpoint = "https://hosted.rudderlabs.com"
 
 // This constant sets the default flush interval used by client instances if
 // none was explicitly set.
@@ -144,7 +150,11 @@ func (c *Config) validate() error {
 // Given a config object as argument the function will set all zero-values to
 // their defaults and return the modified object.
 func makeConfig(c Config) Config {
-	if len(c.Endpoint) == 0 {
+	if len(c.DataPlaneUrl) > 0 {
+		c.Endpoint = c.DataPlaneUrl
+	}
+
+	if len(c.Endpoint) == 0 && len(c.DataPlaneUrl) == 0 {
 		c.Endpoint = DefaultEndpoint
 	}
 
@@ -204,5 +214,5 @@ func makeConfig(c Config) Config {
 // This function returns a string representation of a UUID, it's the default
 // function used for generating unique IDs.
 func uid() string {
-	return uuid.NewRandom().String()
+	return uuid.NewString()
 }

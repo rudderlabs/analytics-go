@@ -19,10 +19,7 @@ type Group struct {
 	Context      *Context     `json:"context,omitempty"`
 	Traits       Traits       `json:"traits,omitempty"`
 	Integrations Integrations `json:"integrations,omitempty"`
-}
-
-func (msg Group) internal() {
-	panic(unimplementedError)
+	Channel      string       `json:"channel,omitempty"`
 }
 
 func (msg Group) Validate() error {

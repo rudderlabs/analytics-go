@@ -19,10 +19,7 @@ type Screen struct {
 	Context      *Context     `json:"context,omitempty"`
 	Properties   Properties   `json:"properties,omitempty"`
 	Integrations Integrations `json:"integrations,omitempty"`
-}
-
-func (msg Screen) internal() {
-	panic(unimplementedError)
+	Channel      string       `json:"channel,omitempty"`
 }
 
 func (msg Screen) Validate() error {

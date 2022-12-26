@@ -17,10 +17,7 @@ type Alias struct {
 	Timestamp    time.Time    `json:"timestamp,omitempty"`
 	Context      *Context     `json:"context,omitempty"`
 	Integrations Integrations `json:"integrations,omitempty"`
-}
-
-func (msg Alias) internal() {
-	panic(unimplementedError)
+	Channel      string       `json:"channel,omitempty"`
 }
 
 func (msg Alias) Validate() error {

@@ -32,3 +32,5 @@ _testmain.go
 tmp/*
 
 .vscode
+.DS_Store
+*.env

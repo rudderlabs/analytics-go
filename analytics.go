@@ -1,11 +1,11 @@
 package analytics
 
 import (
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"strconv"
 	"sync"
 
@@ -18,8 +18,7 @@ import (
 )
 
 // Version of the client.
-const Version = "3.3.0"
-const unimplementedError = "not implemented"
+const Version = "4.0.0"
 
 // This interface is the main API exposed by the analytics package.
 // Values that satsify this interface are returned by the client constructors
@@ -71,7 +70,10 @@ type client struct {
 // The client is created with the default configuration.
 func New(writeKey string, dataPlaneUrl string) Client {
 	// Here we can ignore the error because the default config is always valid.
-	c, _ := NewWithConfig(writeKey, dataPlaneUrl, Config{})
+	config := Config{
+		DataPlaneUrl: dataPlaneUrl,
+	}
+	c, _ := NewWithConfig(writeKey, config)
 	return c
 }
 
@@ -80,12 +82,10 @@ func New(writeKey string, dataPlaneUrl string) Client {
 // The function will return an error if the configuration contained impossible
 // values (like a negative flush interval for example).
 // When the function returns an error the returned client will always be nil.
-func NewWithConfig(writeKey string, dataPlaneUrl string, config Config) (cli Client, err error) {
+func NewWithConfig(writeKey string, config Config) (cli Client, err error) {
 	if err = config.validate(); err != nil {
 		return
 	}
-
-	config.Endpoint = dataPlaneUrl
 
 	c := &client{
 		Config:   makeConfig(config),
@@ -96,6 +96,7 @@ func NewWithConfig(writeKey string, dataPlaneUrl string, config Config) (cli Cli
 		http:     makeHttpClient(config.Transport),
 	}
 	c.totalNodes = 1
+
 	go c.loop()
 
 	cli = c
@@ -116,7 +117,7 @@ func makeContext() *Context {
 	context := Context{}
 	context.Library = LibraryInfo{
 		Name:    "analytics-go",
-		Version: "1.0.0",
+		Version: Version,
 	}
 
 	return &context
@@ -191,6 +192,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.Context == nil {
 			m.Context = makeContext()
 		}
+		m.Channel = "server"
 		msg = m
 
 	case Group:
@@ -203,6 +205,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.Context == nil {
 			m.Context = makeContext()
 		}
+		m.Channel = "server"
 		msg = m
 
 	case Identify:
@@ -215,6 +218,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.Context == nil {
 			m.Context = makeContext()
 		}
+		m.Channel = "server"
 		msg = m
 
 	case Page:
@@ -227,6 +231,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.Context == nil {
 			m.Context = makeContext()
 		}
+		m.Channel = "server"
 		msg = m
 
 	case Screen:
@@ -239,6 +244,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.Context == nil {
 			m.Context = makeContext()
 		}
+		m.Channel = "server"
 		msg = m
 
 	case Track:
@@ -251,6 +257,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.Context == nil {
 			m.Context = makeContext()
 		}
+		m.Channel = "server"
 		msg = m
 
 	default:
@@ -308,7 +315,7 @@ func (c *client) sendAsync(msgs []message, wg *sync.WaitGroup, ex *executor) {
 	}
 }
 
-//Split based on Anonymous ID
+// Split based on Anonymous ID
 func (c *client) getNodePayload(msgs []message) map[int][]message {
 	nodePayload := make(map[int][]message)
 	totalNodes := c.totalNodes
@@ -322,7 +329,8 @@ func (c *client) getNodePayload(msgs []message) map[int][]message {
 	return nodePayload
 }
 
-/*In the nodepayload , we have sent the payloads till the nodeValue k,
+/*
+In the nodepayload , we have sent the payloads till the nodeValue k,
 So we get the payloads for remaining nodes to recompuute the nodePayload
 based on the new targetNodes
 */
@@ -330,9 +338,7 @@ func (c *client) getRevisedMsgs(nodePayload map[int][]message, startFrom int) []
 	msgs := make([]message, 0)
 	for k, v := range nodePayload {
 		if k >= startFrom {
-			for _, msg := range v {
-				msgs = append(msgs, msg)
-			}
+			msgs = append(msgs, v...)
 		}
 	}
 	return msgs
@@ -360,7 +366,7 @@ func (c *client) setNodeCount() {
 			continue
 		}
 		if res.StatusCode == 200 {
-			body, err := ioutil.ReadAll(res.Body)
+			body, err := io.ReadAll(res.Body)
 			if err == nil {
 				c.totalNodes = int(gjson.GetBytes(body, "nodeCount").Int())
 				res.Body.Close()
@@ -373,15 +379,11 @@ func (c *client) setNodeCount() {
 			time.Sleep(200 * time.Millisecond)
 		}
 	}
-	return
 }
 
 func (c *client) getMarshalled(msgs []message) ([]byte, error) {
 	nodeBatch, err := json.Marshal(batch{
-		MessageId: c.uid(),
-		SentAt:    c.now(),
-		Messages:  msgs,
-		Context:   c.DefaultContext,
+		Messages: msgs,
 	})
 	return nodeBatch, err
 }
@@ -452,15 +454,45 @@ func (c *client) send(msgs []message, retryAttempt int) {
 // Upload serialized batch message.
 func (c *client) upload(b []byte, targetNode string) error {
 	url := c.Endpoint + "/v1/batch"
-	req, err := http.NewRequest("POST", url, bytes.NewReader(b))
-	if err != nil {
-		c.errorf("creating request - %s", err)
-		return err
+	var (
+		req      *http.Request
+		reqError error
+	)
+	if c.Config.Gzip == 0 {
+		gzipPayload := func(data []byte) (io.Reader, error) {
+			var b bytes.Buffer
+			gz, err := gzip.NewWriterLevel(&b, gzip.BestSpeed)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := gz.Write(data); err != nil {
+				return nil, err
+			}
+			if err = gz.Close(); err != nil {
+				return nil, err
+			}
+			return &b, nil
+		}
+
+		payload, err := gzipPayload(b)
+		if err != nil {
+			c.errorf("gzip payload - %s", err)
+			return err
+		}
+		req, reqError = http.NewRequest("POST", url, payload)
+		req.Header.Add("Content-Encoding", "gzip")
+	} else {
+		req, reqError = http.NewRequest("POST", url, bytes.NewReader(b))
+	}
+
+	if reqError != nil {
+		c.errorf("creating request - %s", reqError)
+		return reqError
 	}
 
 	req.Header.Add("User-Agent", "analytics-go (version: "+Version+")")
 	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Content-Length", string(len(b)))
+	req.Header.Add("Content-Length", strconv.Itoa(len(b)))
 	if !c.NoProxySupport {
 		req.Header.Add("RS-targetNode", targetNode)
 		req.Header.Add("RS-nodeCount", strconv.Itoa(c.totalNodes))
@@ -491,7 +523,7 @@ func (c *client) report(res *http.Response) (err error) {
 		return errors.New(strconv.Itoa(res.StatusCode))
 	}
 
-	if body, err = ioutil.ReadAll(res.Body); err != nil {
+	if body, err = io.ReadAll(res.Body); err != nil {
 		c.errorf("response %d %s - %s", res.StatusCode, res.Status, err)
 		return
 	}
@@ -583,11 +615,7 @@ func (c *client) errorf(format string, args ...interface{}) {
 }
 
 func (c *client) maxBatchBytes() int {
-	b, _ := json.Marshal(batch{
-		MessageId: c.uid(),
-		SentAt:    c.now(),
-		Context:   c.DefaultContext,
-	})
+	b, _ := json.Marshal(batch{})
 	return c.MaxBatchBytes - len(b)
 }
 

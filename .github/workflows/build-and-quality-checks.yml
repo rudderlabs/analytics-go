@@ -1,0 +1,24 @@
+name: Code Quality Checks
+on:
+  pull_request:
+    branches: ['v3.3']
+    types: ['opened', 'reopened', 'synchronize']
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go: [ '1.19', '1.18', '1.17' ]
+    
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Go ${{ matrix.go }}
+        uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Build Go ${{ matrix.go }}
+        run: go build -v ./...
+      - name: Test Go ${{ matrix.go }}
+        run: go test  ./... -v

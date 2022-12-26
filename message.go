@@ -36,9 +36,6 @@ type Message interface {
 	// Validate validates the internal structure of the message, the method must return
 	// nil if the message is valid, or an error describing what went wrong.
 	Validate() error
-
-	// internal is an unexposed interface function to ensure only types defined within this package can satisfy the Message interface. Invoking this method will panic.
-	internal()
 }
 
 // Takes a message id as first argument and returns it, unless it's the zero-
@@ -63,10 +60,7 @@ func makeTimestamp(t time.Time, def time.Time) time.Time {
 // export this type because it's only meant to be used internally to send groups
 // of messages in one API call.
 type batch struct {
-	MessageId string    `json:"messageId"`
-	SentAt    time.Time `json:"sentAt"`
-	Messages  []message `json:"batch"`
-	Context   *Context  `json:"context"`
+	Messages []message `json:"batch"`
 }
 
 type message struct {
@@ -126,6 +120,6 @@ func (q *messageQueue) flush() (msgs []message) {
 }
 
 const (
-	defMaxBatchBytes   = 500000 // ~500 KB
-	defMaxMessageBytes = 32000  // ~32 KB
+	defMaxBatchBytes   = 512000 // ~500 KB
+	defMaxMessageBytes = 32768  // ~32 KB
 )
