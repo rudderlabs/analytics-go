@@ -14,18 +14,11 @@
       "context": {
         "library": {
           "name": "analytics-go",
-          "version": "3.4.0"
+          "version": "4.0.0"
         }
       },
       "anonymousId": "123456",
       "channel": "server"
     }
-  ],
-  "context": {
-    "library": {
-      "name": "analytics-go",
-      "version": "3.4.0"
-    }
-  },
-  "sentAt": "2009-11-10T23:00:00Z"
+  ]
 }

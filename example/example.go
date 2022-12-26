@@ -26,11 +26,13 @@ func main() {
 	WRITE_KEY := goDotEnvVariable("WRITE_KEY")
 	DATA_PLANE_URL := goDotEnvVariable("DATA_PLANE_URL")
 
-	client, _ := analytics.NewWithConfig(WRITE_KEY, DATA_PLANE_URL,
+	client, _ := analytics.NewWithConfig(WRITE_KEY,
 		analytics.Config{
-			Interval:  30 * time.Second,
-			BatchSize: 100,
-			Verbose:   true,
+			DataPlaneUrl: DATA_PLANE_URL,
+			Interval:     30 * time.Second,
+			BatchSize:    100,
+			Verbose:      true,
+			Gzip:         2,
 		})
 	defer client.Close()
 
