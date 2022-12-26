@@ -21,16 +21,9 @@
       "context": {
         "library": {
           "name": "analytics-go",
-          "version": "3.4.0"
+          "version": "4.0.0"
         }
       }
     }
-  ],
-  "context": {
-    "library": {
-      "name": "analytics-go",
-      "version": "3.4.0"
-    }
-  },
-  "sentAt": "2009-11-10T23:00:00Z"
+  ]
 }

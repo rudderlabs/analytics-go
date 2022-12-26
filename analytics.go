@@ -1,6 +1,7 @@
 package analytics
 
 import (
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -17,7 +18,7 @@ import (
 )
 
 // Version of the client.
-const Version = "3.4.0"
+const Version = "4.0.0"
 
 // This interface is the main API exposed by the analytics package.
 // Values that satsify this interface are returned by the client constructors
@@ -69,7 +70,10 @@ type client struct {
 // The client is created with the default configuration.
 func New(writeKey string, dataPlaneUrl string) Client {
 	// Here we can ignore the error because the default config is always valid.
-	c, _ := NewWithConfig(writeKey, dataPlaneUrl, Config{})
+	config := Config{
+		DataPlaneUrl: dataPlaneUrl,
+	}
+	c, _ := NewWithConfig(writeKey, config)
 	return c
 }
 
@@ -78,12 +82,10 @@ func New(writeKey string, dataPlaneUrl string) Client {
 // The function will return an error if the configuration contained impossible
 // values (like a negative flush interval for example).
 // When the function returns an error the returned client will always be nil.
-func NewWithConfig(writeKey string, dataPlaneUrl string, config Config) (cli Client, err error) {
+func NewWithConfig(writeKey string, config Config) (cli Client, err error) {
 	if err = config.validate(); err != nil {
 		return
 	}
-
-	config.Endpoint = dataPlaneUrl
 
 	c := &client{
 		Config:   makeConfig(config),
@@ -94,6 +96,7 @@ func NewWithConfig(writeKey string, dataPlaneUrl string, config Config) (cli Cli
 		http:     makeHttpClient(config.Transport),
 	}
 	c.totalNodes = 1
+
 	go c.loop()
 
 	cli = c
@@ -110,14 +113,17 @@ func makeHttpClient(transport http.RoundTripper) http.Client {
 	return httpClient
 }
 
-func makeContext() *Context {
-	context := Context{}
+func makeContext(context *Context) *Context {
+	if context == nil {
+		context = &Context{}
+	}
+	// context := Context{}
 	context.Library = LibraryInfo{
 		Name:    "analytics-go",
 		Version: Version,
 	}
 
-	return &context
+	return context
 }
 
 func makeAnonymousId(userId string) string {
@@ -186,9 +192,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.Type = "alias"
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		if m.Context == nil {
-			m.Context = makeContext()
-		}
+		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -199,9 +203,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		if m.Context == nil {
-			m.Context = makeContext()
-		}
+		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -212,9 +214,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		if m.Context == nil {
-			m.Context = makeContext()
-		}
+		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -225,9 +225,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		if m.Context == nil {
-			m.Context = makeContext()
-		}
+		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -238,9 +236,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		if m.Context == nil {
-			m.Context = makeContext()
-		}
+		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -251,9 +247,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		if m.Context == nil {
-			m.Context = makeContext()
-		}
+		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -380,9 +374,7 @@ func (c *client) setNodeCount() {
 
 func (c *client) getMarshalled(msgs []message) ([]byte, error) {
 	nodeBatch, err := json.Marshal(batch{
-		SentAt:   c.now(),
 		Messages: msgs,
-		Context:  c.DefaultContext,
 	})
 	return nodeBatch, err
 }
@@ -453,10 +445,40 @@ func (c *client) send(msgs []message, retryAttempt int) {
 // Upload serialized batch message.
 func (c *client) upload(b []byte, targetNode string) error {
 	url := c.Endpoint + "/v1/batch"
-	req, err := http.NewRequest("POST", url, bytes.NewReader(b))
-	if err != nil {
-		c.errorf("creating request - %s", err)
-		return err
+	var (
+		req      *http.Request
+		reqError error
+	)
+	if c.Config.Gzip == 0 {
+		gzipPayload := func(data []byte) (io.Reader, error) {
+			var b bytes.Buffer
+			gz, err := gzip.NewWriterLevel(&b, gzip.BestSpeed)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := gz.Write(data); err != nil {
+				return nil, err
+			}
+			if err = gz.Close(); err != nil {
+				return nil, err
+			}
+			return &b, nil
+		}
+
+		payload, err := gzipPayload(b)
+		if err != nil {
+			c.errorf("gzip payload - %s", err)
+			return err
+		}
+		req, reqError = http.NewRequest("POST", url, payload)
+		req.Header.Add("Content-Encoding", "gzip")
+	} else {
+		req, reqError = http.NewRequest("POST", url, bytes.NewReader(b))
+	}
+
+	if reqError != nil {
+		c.errorf("creating request - %s", reqError)
+		return reqError
 	}
 
 	req.Header.Add("User-Agent", "analytics-go (version: "+Version+")")
@@ -584,10 +606,7 @@ func (c *client) errorf(format string, args ...interface{}) {
 }
 
 func (c *client) maxBatchBytes() int {
-	b, _ := json.Marshal(batch{
-		SentAt:  c.now(),
-		Context: c.DefaultContext,
-	})
+	b, _ := json.Marshal(batch{})
 	return c.MaxBatchBytes - len(b)
 }
 
