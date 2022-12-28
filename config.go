@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/segmentio/backo-go"
-	"github.com/xtgo/uuid"
 )
 
 // Instances of this type carry the different configuration options that may
