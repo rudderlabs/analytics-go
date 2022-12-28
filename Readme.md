@@ -90,7 +90,7 @@ func main() {
 			Interval:     30 * time.Second,
 			BatchSize:    100,
 			Verbose:      true,
-			Gzip:         1,  // Disables Gzip compression - set to 0 to enable Gzip.
+			Gzip:         0,  // Enables Gzip compression - set to 1 to disable Gzip.
 		})
 
     // Enqueues a track event that will be sent asynchronously.
@@ -117,7 +117,7 @@ client, _ := analytics.NewWithConfig(WRITE_KEY,
 			Interval:     30 * time.Second,
 			BatchSize:    100,
 			Verbose:      true,
-			Gzip:         1  // Set to 0 to enable Gzip compression
+			Gzip:         0  // Enables Gzip compression - set to 1 to disable Gzip.
 		})
 ```
 
