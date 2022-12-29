@@ -113,14 +113,17 @@ func makeHttpClient(transport http.RoundTripper) http.Client {
 	return httpClient
 }
 
-func makeContext() *Context {
-	context := Context{}
+func makeContext(context *Context) *Context {
+	if context == nil {
+		context = &Context{}
+	}
+	// context := Context{}
 	context.Library = LibraryInfo{
 		Name:    "analytics-go",
 		Version: Version,
 	}
 
-	return &context
+	return context
 }
 
 func makeAnonymousId(userId string) string {
@@ -189,9 +192,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.Type = "alias"
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		if m.Context == nil {
-			m.Context = makeContext()
-		}
+		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -202,9 +203,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		if m.Context == nil {
-			m.Context = makeContext()
-		}
+		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -215,9 +214,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		if m.Context == nil {
-			m.Context = makeContext()
-		}
+		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -228,9 +225,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		if m.Context == nil {
-			m.Context = makeContext()
-		}
+		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -241,9 +236,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		if m.Context == nil {
-			m.Context = makeContext()
-		}
+		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -254,9 +247,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		if m.Context == nil {
-			m.Context = makeContext()
-		}
+		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
