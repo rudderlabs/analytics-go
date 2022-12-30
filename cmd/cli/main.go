@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/rudderlabs/analytics-go/v3"
+	"github.com/rudderlabs/analytics-go/v4"
 	"github.com/segmentio/conf"
 )
 

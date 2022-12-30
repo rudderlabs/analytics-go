@@ -49,7 +49,7 @@ go get github.com/rudderlabs/analytics-go
 package main
 
 import (
-    "github.com/rudderlabs/analytics-go/v3"
+    "github.com/rudderlabs/analytics-go/v4"
 )
 
 func main() {
@@ -76,7 +76,7 @@ Alternatively, you can run the following snippet:
 package main
 
 import (
-    "github.com/rudderlabs/analytics-go/v3"
+    "github.com/rudderlabs/analytics-go/v4"
 )
 
 func main() {

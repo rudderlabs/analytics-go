@@ -2,6 +2,10 @@
   "batch": [
     {
       "context": {
+        "library": {
+          "name": "analytics-go",
+          "version": "4.0.0"
+        },
         "whatever": "here"
       },
       "event": "Download",
