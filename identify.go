@@ -14,8 +14,9 @@ type Identify struct {
 	MessageId    string       `json:"messageId,omitempty"`
 	AnonymousId  string       `json:"anonymousId,omitempty"`
 	UserId       string       `json:"userId,omitempty"`
-	Timestamp    time.Time    `json:"timestamp,omitempty"`
+	Timestamp    time.Time    `json:"originalTimestamp,omitempty"`
 	Context      *Context     `json:"context,omitempty"`
+	Properties   Properties   `json:"properties,omitempty"`
 	Traits       Traits       `json:"traits,omitempty"`
 	Integrations Integrations `json:"integrations,omitempty"`
 	Channel      string       `json:"channel,omitempty"`
