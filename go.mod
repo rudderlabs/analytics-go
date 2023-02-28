@@ -1,4 +1,4 @@
-module github.com/rudderlabs/analytics-go/v4
+module github.com/bufbuild/analytics-go/v4
 
 go 1.17
 
