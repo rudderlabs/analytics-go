@@ -14,8 +14,9 @@ type Alias struct {
 	MessageId    string       `json:"messageId,omitempty"`
 	PreviousId   string       `json:"previousId"`
 	UserId       string       `json:"userId"`
-	Timestamp    time.Time    `json:"timestamp,omitempty"`
+	Timestamp    time.Time    `json:"originalTimestamp,omitempty"`
 	Context      *Context     `json:"context,omitempty"`
+	Properties   Properties   `json:"properties,omitempty"`
 	Integrations Integrations `json:"integrations,omitempty"`
 	Channel      string       `json:"channel,omitempty"`
 }
