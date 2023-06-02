@@ -236,12 +236,12 @@ func ExampleTrack() {
 	//       },
 	//       "event": "Download",
 	//       "messageId": "I'm unique",
+	//       "originalTimestamp": "2009-11-10T23:00:00Z",
 	//       "properties": {
 	//         "application": "Rudder Desktop",
 	//         "platform": "osx",
 	//         "version": "1.1.0"
 	//       },
-	//       "timestamp": "2009-11-10T23:00:00Z",
 	//       "type": "track",
 	//       "userId": "123456"
 	//     }
