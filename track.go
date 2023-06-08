@@ -16,6 +16,7 @@ type Track struct {
 	UserId       string       `json:"userId,omitempty"`
 	Event        string       `json:"event"`
 	Timestamp    time.Time    `json:"originalTimestamp,omitempty"`
+	SentAt       time.Time    `json:"sentAt,omitempty"`
 	Context      *Context     `json:"context,omitempty"`
 	Properties   Properties   `json:"properties,omitempty"`
 	Integrations Integrations `json:"integrations,omitempty"`

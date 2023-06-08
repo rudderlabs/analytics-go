@@ -4,6 +4,7 @@
       "groupId": "A",
       "messageId": "I'm unique",
       "originalTimestamp": "2009-11-10T23:00:00Z",
+      "sentAt": "2009-11-10T23:00:00Z",
       "type": "group",
       "userId": "B",
       "context": {

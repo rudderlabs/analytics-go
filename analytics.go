@@ -192,6 +192,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.Type = "alias"
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
+		m.SentAt = m.Timestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -203,6 +204,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
+		m.SentAt = m.Timestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -214,6 +216,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
+		m.SentAt = m.Timestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -225,6 +228,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
+		m.SentAt = m.Timestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -236,6 +240,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
+		m.SentAt = m.Timestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -247,6 +252,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
 		m.Timestamp = makeTimestamp(m.Timestamp, ts)
+		m.SentAt = m.Timestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m

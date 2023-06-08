@@ -242,6 +242,7 @@ func ExampleTrack() {
 	//         "platform": "osx",
 	//         "version": "1.1.0"
 	//       },
+	//       "sentAt": "2009-11-10T23:00:00Z",
 	//       "type": "track",
 	//       "userId": "123456"
 	//     }

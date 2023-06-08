@@ -15,6 +15,7 @@ type Identify struct {
 	AnonymousId  string       `json:"anonymousId,omitempty"`
 	UserId       string       `json:"userId,omitempty"`
 	Timestamp    time.Time    `json:"originalTimestamp,omitempty"`
+	SentAt       time.Time    `json:"sentAt,omitempty"`
 	Context      *Context     `json:"context,omitempty"`
 	Traits       Traits       `json:"traits,omitempty"`
 	Integrations Integrations `json:"integrations,omitempty"`

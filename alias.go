@@ -15,6 +15,7 @@ type Alias struct {
 	PreviousId   string       `json:"previousId"`
 	UserId       string       `json:"userId"`
 	Timestamp    time.Time    `json:"originalTimestamp,omitempty"`
+	SentAt       time.Time    `json:"sentAt,omitempty"`
 	Context      *Context     `json:"context,omitempty"`
 	Properties   Properties   `json:"properties,omitempty"`
 	Integrations Integrations `json:"integrations,omitempty"`
