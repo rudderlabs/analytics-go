@@ -11,15 +11,15 @@ type Identify struct {
 	// the application, its value is always overwritten by the library.
 	Type string `json:"type,omitempty"`
 
-	MessageId    string       `json:"messageId,omitempty"`
-	AnonymousId  string       `json:"anonymousId,omitempty"`
-	UserId       string       `json:"userId,omitempty"`
-	Timestamp    time.Time    `json:"originalTimestamp,omitempty"`
-	SentAt       time.Time    `json:"sentAt,omitempty"`
-	Context      *Context     `json:"context,omitempty"`
-	Traits       Traits       `json:"traits,omitempty"`
-	Integrations Integrations `json:"integrations,omitempty"`
-	Channel      string       `json:"channel,omitempty"`
+	MessageId         string       `json:"messageId,omitempty"`
+	AnonymousId       string       `json:"anonymousId,omitempty"`
+	UserId            string       `json:"userId,omitempty"`
+	OriginalTimestamp time.Time    `json:"originalTimestamp,omitempty"`
+	SentAt            time.Time    `json:"sentAt,omitempty"`
+	Context           *Context     `json:"context,omitempty"`
+	Traits            Traits       `json:"traits,omitempty"`
+	Integrations      Integrations `json:"integrations,omitempty"`
+	Channel           string       `json:"channel,omitempty"`
 }
 
 func (msg Identify) Validate() error {

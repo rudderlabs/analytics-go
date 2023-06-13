@@ -11,16 +11,16 @@ type Page struct {
 	// the application, its value is always overwritten by the library.
 	Type string `json:"type,omitempty"`
 
-	MessageId    string       `json:"messageId,omitempty"`
-	AnonymousId  string       `json:"anonymousId,omitempty"`
-	UserId       string       `json:"userId,omitempty"`
-	Name         string       `json:"name,omitempty"`
-	Timestamp    time.Time    `json:"originalTimestamp,omitempty"`
-	SentAt       time.Time    `json:"sentAt,omitempty"`
-	Context      *Context     `json:"context,omitempty"`
-	Properties   Properties   `json:"properties,omitempty"`
-	Integrations Integrations `json:"integrations,omitempty"`
-	Channel      string       `json:"channel,omitempty"`
+	MessageId         string       `json:"messageId,omitempty"`
+	AnonymousId       string       `json:"anonymousId,omitempty"`
+	UserId            string       `json:"userId,omitempty"`
+	Name              string       `json:"name,omitempty"`
+	OriginalTimestamp time.Time    `json:"originalTimestamp,omitempty"`
+	SentAt            time.Time    `json:"sentAt,omitempty"`
+	Context           *Context     `json:"context,omitempty"`
+	Properties        Properties   `json:"properties,omitempty"`
+	Integrations      Integrations `json:"integrations,omitempty"`
+	Channel           string       `json:"channel,omitempty"`
 }
 
 func (msg Page) Validate() error {

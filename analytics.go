@@ -191,8 +191,8 @@ func (c *client) Enqueue(msg Message) (err error) {
 	case Alias:
 		m.Type = "alias"
 		m.MessageId = makeMessageId(m.MessageId, id)
-		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		m.SentAt = m.Timestamp
+		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
+		m.SentAt = m.OriginalTimestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -203,8 +203,8 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.AnonymousId == "" {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
-		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		m.SentAt = m.Timestamp
+		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
+		m.SentAt = m.OriginalTimestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -215,8 +215,8 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.AnonymousId == "" {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
-		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		m.SentAt = m.Timestamp
+		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
+		m.SentAt = m.OriginalTimestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -227,8 +227,8 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.AnonymousId == "" {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
-		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		m.SentAt = m.Timestamp
+		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
+		m.SentAt = m.OriginalTimestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -239,8 +239,8 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.AnonymousId == "" {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
-		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		m.SentAt = m.Timestamp
+		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
+		m.SentAt = m.OriginalTimestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -251,8 +251,8 @@ func (c *client) Enqueue(msg Message) (err error) {
 		if m.AnonymousId == "" {
 			m.AnonymousId = makeAnonymousId(m.UserId)
 		}
-		m.Timestamp = makeTimestamp(m.Timestamp, ts)
-		m.SentAt = m.Timestamp
+		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
+		m.SentAt = m.OriginalTimestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m

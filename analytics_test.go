@@ -439,7 +439,7 @@ func TestTrackWithTimestamp(t *testing.T) {
 			"version":     "1.1.0",
 			"platform":    "osx",
 		},
-		Timestamp: time.Date(2015, time.July, 10, 23, 0, 0, 0, time.UTC),
+		OriginalTimestamp: time.Date(2015, time.July, 10, 23, 0, 0, 0, time.UTC),
 	})
 
 	res := string(<-body)

@@ -11,15 +11,15 @@ type Alias struct {
 	// the application, its value is always overwritten by the library.
 	Type string `json:"type,omitempty"`
 
-	MessageId    string       `json:"messageId,omitempty"`
-	PreviousId   string       `json:"previousId"`
-	UserId       string       `json:"userId"`
-	Timestamp    time.Time    `json:"originalTimestamp,omitempty"`
-	SentAt       time.Time    `json:"sentAt,omitempty"`
-	Context      *Context     `json:"context,omitempty"`
-	Properties   Properties   `json:"properties,omitempty"`
-	Integrations Integrations `json:"integrations,omitempty"`
-	Channel      string       `json:"channel,omitempty"`
+	MessageId         string       `json:"messageId,omitempty"`
+	PreviousId        string       `json:"previousId"`
+	UserId            string       `json:"userId"`
+	OriginalTimestamp time.Time    `json:"originalTimestamp,omitempty"`
+	SentAt            time.Time    `json:"sentAt,omitempty"`
+	Context           *Context     `json:"context,omitempty"`
+	Properties        Properties   `json:"properties,omitempty"`
+	Integrations      Integrations `json:"integrations,omitempty"`
+	Channel           string       `json:"channel,omitempty"`
 }
 
 func (msg Alias) Validate() error {
