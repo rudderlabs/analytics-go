@@ -17,7 +17,6 @@ type Alias struct {
 	OriginalTimestamp time.Time    `json:"originalTimestamp,omitempty"`
 	SentAt            time.Time    `json:"sentAt,omitempty"`
 	Context           *Context     `json:"context,omitempty"`
-	Properties        Properties   `json:"properties,omitempty"`
 	Integrations      Integrations `json:"integrations,omitempty"`
 	Channel           string       `json:"channel,omitempty"`
 }
