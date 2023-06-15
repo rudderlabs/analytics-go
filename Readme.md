@@ -108,7 +108,7 @@ func main() {
 
 ## Gzip support
 
-The Go SDK supports Gzip compression from version 4.1.0 and it is enabled by default. However, you can disable this feature by setting the `DisableGzip` parameter to `true` while initializing the SDK, as shown:
+The Go SDK supports Gzip compression from version 4.2.0 and it is enabled by default. However, you can disable this feature by setting the `DisableGzip` parameter to `true` while initializing the SDK, as shown:
 
 ```go
 client, _ := analytics.NewWithConfig(WRITE_KEY,
