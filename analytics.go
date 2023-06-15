@@ -1,17 +1,16 @@
 package analytics
 
 import (
+	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
+	"net/http"
 	"strconv"
 	"sync"
-
-	"bytes"
-	"encoding/json"
-	"net/http"
 	"time"
 
 	"github.com/tidwall/gjson"
@@ -126,11 +125,7 @@ func makeContext(context *Context) *Context {
 	return context
 }
 
-func makeAnonymousId(userId string) string {
-
-	if userId != "" {
-		return userId
-	}
+func makeAnonymousId() string {
 	return uid()
 }
 
@@ -178,14 +173,13 @@ func dereferenceMessage(msg Message) Message {
 }
 
 func (c *client) Enqueue(msg Message) (err error) {
-
 	msg = dereferenceMessage(msg)
 	if err = msg.Validate(); err != nil {
 		return
 	}
 
-	var id = c.uid()
-	var ts = c.now()
+	id := c.uid()
+	ts := c.now()
 
 	switch m := msg.(type) {
 	case Alias:
@@ -200,11 +194,9 @@ func (c *client) Enqueue(msg Message) (err error) {
 	case Group:
 		m.Type = "group"
 		m.MessageId = makeMessageId(m.MessageId, id)
-		if m.AnonymousId == "" {
-			m.AnonymousId = makeAnonymousId(m.UserId)
-		}
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
+		m.AnonymousId = makeAnonymousId()
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -212,9 +204,6 @@ func (c *client) Enqueue(msg Message) (err error) {
 	case Identify:
 		m.Type = "identify"
 		m.MessageId = makeMessageId(m.MessageId, id)
-		if m.AnonymousId == "" {
-			m.AnonymousId = makeAnonymousId(m.UserId)
-		}
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
 		m.Context = makeContext(m.Context)
@@ -224,11 +213,9 @@ func (c *client) Enqueue(msg Message) (err error) {
 	case Page:
 		m.Type = "page"
 		m.MessageId = makeMessageId(m.MessageId, id)
-		if m.AnonymousId == "" {
-			m.AnonymousId = makeAnonymousId(m.UserId)
-		}
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
+		m.AnonymousId = makeAnonymousId()
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -236,11 +223,9 @@ func (c *client) Enqueue(msg Message) (err error) {
 	case Screen:
 		m.Type = "screen"
 		m.MessageId = makeMessageId(m.MessageId, id)
-		if m.AnonymousId == "" {
-			m.AnonymousId = makeAnonymousId(m.UserId)
-		}
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
+		m.AnonymousId = makeAnonymousId()
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -248,11 +233,9 @@ func (c *client) Enqueue(msg Message) (err error) {
 	case Track:
 		m.Type = "track"
 		m.MessageId = makeMessageId(m.MessageId, id)
-		if m.AnonymousId == "" {
-			m.AnonymousId = makeAnonymousId(m.UserId)
-		}
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
+		m.AnonymousId = makeAnonymousId()
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -356,7 +339,6 @@ func (c *client) setNodeCount() {
 		req.SetBasicAuth(c.key, "")
 
 		res, err := c.http.Do(req)
-
 		if err != nil {
 			c.errorf("sending request - %s", err)
 			time.Sleep(200 * time.Millisecond)
@@ -392,7 +374,7 @@ func (c *client) send(msgs []message, retryAttempt int) {
 	nodePayload := c.getNodePayload(msgs)
 	for k, b := range nodePayload {
 		for i := 0; i != attempts; i++ {
-			//Get Node Count from Client
+			// Get Node Count from Client
 			if c.totalNodes == 0 {
 				/*
 					Since we are running the setNodeCount in a seperate goroutine from the main thread,  we should not send out any packets till
@@ -418,7 +400,7 @@ func (c *client) send(msgs []message, retryAttempt int) {
 				for only those nodes where we failed in sending the data and then recursively call the send function with the updated payload.
 				*/
 				const maxSleepTime = 300 * time.Second
-				var sleepTimeOut = time.Duration(retryAttempt*5) * time.Second
+				sleepTimeOut := time.Duration(retryAttempt*5) * time.Second
 				if sleepTimeOut > maxSleepTime {
 					sleepTimeOut = maxSleepTime
 				}
@@ -498,7 +480,6 @@ func (c *client) upload(b []byte, targetNode string) error {
 	req.SetBasicAuth(c.key, "")
 
 	res, err := c.http.Do(req)
-
 	if err != nil {
 		c.errorf("sending request - %s", err)
 		return err

@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-
 	"time"
 
 	"github.com/google/uuid"
@@ -14,7 +13,6 @@ import (
 func goDotEnvVariable(key string) string {
 	// load .env file
 	err := godotenv.Load(".env")
-
 	if err != nil {
 		fmt.Println("Error loading .env file")
 	}
@@ -53,7 +51,7 @@ func main() {
 		Set("Role", "Jedi").SetAge(25)
 
 	userId := "123456"
-	anonymousId := uuid.NewString()
+	anonymousId := "" // uuid.NewString()
 
 	context := analytics.Context{
 		Screen: analytics.ScreenInfo{
