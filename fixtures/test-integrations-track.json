@@ -17,7 +17,7 @@
       "sentAt": "2009-11-10T23:00:00Z",
       "type": "track",
       "userId": "123456",
-      "anonymousId": "123456",
+      "anonymousId": "789012",
       "channel": "server",
       "context": {
         "library": {

@@ -125,8 +125,12 @@ func makeContext(context *Context) *Context {
 	return context
 }
 
-func makeAnonymousId() string {
-	return uid()
+func makeAnonymousId(anonymousId string) string {
+	if anonymousId == "" {
+		return uid()
+	} else {
+		return anonymousId
+	}
 }
 
 func dereferenceMessage(msg Message) Message {
@@ -196,7 +200,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
-		m.AnonymousId = makeAnonymousId()
+		m.AnonymousId = makeAnonymousId(m.AnonymousId)
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -215,7 +219,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
-		m.AnonymousId = makeAnonymousId()
+		m.AnonymousId = makeAnonymousId(m.AnonymousId)
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -225,7 +229,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
-		m.AnonymousId = makeAnonymousId()
+		m.AnonymousId = makeAnonymousId(m.AnonymousId)
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -235,7 +239,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
-		m.AnonymousId = makeAnonymousId()
+		m.AnonymousId = makeAnonymousId(m.AnonymousId)
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m

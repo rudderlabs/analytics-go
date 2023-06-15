@@ -12,8 +12,7 @@
           "version": "4.1.0"
         }
       },
-      "channel": "server",
-      "anonymousId": "B"
+      "channel": "server"
     }
   ]
 }

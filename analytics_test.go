@@ -212,8 +212,9 @@ func ExampleTrack() {
 	defer client.Close()
 
 	client.Enqueue(Track{
-		Event:  "Download",
-		UserId: "123456",
+		Event:       "Download",
+		UserId:      "123456",
+		AnonymousId: "789012",
 		Properties: Properties{
 			"application": "Rudder Desktop",
 			"version":     "1.1.0",
@@ -226,7 +227,7 @@ func ExampleTrack() {
 	// {
 	//   "batch": [
 	//     {
-	//       "anonymousId": "123456",
+	//       "anonymousId": "789012",
 	//       "channel": "server",
 	//       "context": {
 	//         "library": {
@@ -262,7 +263,7 @@ func TestEnqueue(t *testing.T) {
 
 		"group": {
 			fixture("test-enqueue-group.json"),
-			Group{GroupId: "A", UserId: "B"},
+			Group{GroupId: "A", UserId: "B", AnonymousId: "C"},
 		},
 
 		"identify": {
@@ -272,19 +273,20 @@ func TestEnqueue(t *testing.T) {
 
 		"page": {
 			fixture("test-enqueue-page.json"),
-			Page{Name: "A", UserId: "B"},
+			Page{Name: "A", UserId: "B", AnonymousId: "C"},
 		},
 
 		"screen": {
 			fixture("test-enqueue-screen.json"),
-			Screen{Name: "A", UserId: "B"},
+			Screen{Name: "A", UserId: "B", AnonymousId: "C"},
 		},
 
 		"track": {
 			fixture("test-enqueue-track.json"),
 			Track{
-				Event:  "Download",
-				UserId: "123456",
+				Event:       "Download",
+				UserId:      "123456",
+				AnonymousId: "789012",
 				Properties: Properties{
 					"application": "Rudder Desktop",
 					"version":     "1.1.0",
@@ -299,7 +301,7 @@ func TestEnqueue(t *testing.T) {
 
 		"*group": {
 			fixture("test-enqueue-group.json"),
-			&Group{GroupId: "A", UserId: "B"},
+			&Group{GroupId: "A", UserId: "B", AnonymousId: "C"},
 		},
 
 		"*identify": {
@@ -309,19 +311,20 @@ func TestEnqueue(t *testing.T) {
 
 		"*page": {
 			fixture("test-enqueue-page.json"),
-			&Page{Name: "A", UserId: "B"},
+			&Page{Name: "A", UserId: "B", AnonymousId: "C"},
 		},
 
 		"*screen": {
 			fixture("test-enqueue-screen.json"),
-			&Screen{Name: "A", UserId: "B"},
+			&Screen{Name: "A", UserId: "B", AnonymousId: "C"},
 		},
 
 		"*track": {
 			fixture("test-enqueue-track.json"),
 			&Track{
-				Event:  "Download",
-				UserId: "123456",
+				Event:       "Download",
+				UserId:      "123456",
+				AnonymousId: "789012",
 				Properties: Properties{
 					"application": "Rudder Desktop",
 					"version":     "1.1.0",
@@ -359,8 +362,7 @@ func TestEnqueue(t *testing.T) {
 
 var _ Message = (*customMessage)(nil)
 
-type customMessage struct {
-}
+type customMessage struct{}
 
 func (c *customMessage) Validate() error {
 	return nil
@@ -377,7 +379,7 @@ func TestEnqueuingCustomTypeFails(t *testing.T) {
 
 func TestTrackWithInterval(t *testing.T) {
 	const interval = 100 * time.Millisecond
-	var ref = fixture("test-interval-track.json")
+	ref := fixture("test-interval-track.json")
 
 	body, server := mockServer()
 	defer server.Close()
@@ -395,8 +397,9 @@ func TestTrackWithInterval(t *testing.T) {
 	defer client.Close()
 
 	client.Enqueue(Track{
-		Event:  "Download",
-		UserId: "123456",
+		Event:       "Download",
+		UserId:      "123456",
+		AnonymousId: "789012",
 		Properties: Properties{
 			"application": "Rudder Desktop",
 			"version":     "1.1.0",
@@ -416,7 +419,7 @@ func TestTrackWithInterval(t *testing.T) {
 }
 
 func TestTrackWithTimestamp(t *testing.T) {
-	var ref = fixture("test-timestamp-track.json")
+	ref := fixture("test-timestamp-track.json")
 
 	body, server := mockServer()
 	defer server.Close()
@@ -432,8 +435,9 @@ func TestTrackWithTimestamp(t *testing.T) {
 	defer client.Close()
 
 	client.Enqueue(Track{
-		Event:  "Download",
-		UserId: "123456",
+		Event:       "Download",
+		UserId:      "123456",
+		AnonymousId: "789012",
 		Properties: Properties{
 			"application": "Rudder Desktop",
 			"version":     "1.1.0",
@@ -449,7 +453,7 @@ func TestTrackWithTimestamp(t *testing.T) {
 }
 
 func TestEnableGzipSupport(t *testing.T) {
-	var ref = fixture("test-messageid-track.json")
+	ref := fixture("test-messageid-track.json")
 
 	body, server := mockServer()
 	defer server.Close()
@@ -465,8 +469,9 @@ func TestEnableGzipSupport(t *testing.T) {
 	defer client.Close()
 
 	client.Enqueue(Track{
-		Event:  "Download",
-		UserId: "123456",
+		Event:       "Download",
+		UserId:      "123456",
+		AnonymousId: "789012",
 		Properties: Properties{
 			"application": "Rudder Desktop",
 			"version":     "1.1.0",
@@ -482,7 +487,7 @@ func TestEnableGzipSupport(t *testing.T) {
 }
 
 func TestDisableGzipSupport(t *testing.T) {
-	var ref = fixture("test-messageid-track.json")
+	ref := fixture("test-messageid-track.json")
 
 	body, server := mockServer()
 	defer server.Close()
@@ -499,8 +504,9 @@ func TestDisableGzipSupport(t *testing.T) {
 	defer client.Close()
 
 	client.Enqueue(Track{
-		Event:  "Download",
-		UserId: "123456",
+		Event:       "Download",
+		UserId:      "123456",
+		AnonymousId: "789012",
 		Properties: Properties{
 			"application": "Rudder Desktop",
 			"version":     "1.1.0",
@@ -516,7 +522,7 @@ func TestDisableGzipSupport(t *testing.T) {
 }
 
 func TestTrackWithMessageId(t *testing.T) {
-	var ref = fixture("test-messageid-track.json")
+	ref := fixture("test-messageid-track.json")
 
 	body, server := mockServer()
 	defer server.Close()
@@ -532,8 +538,9 @@ func TestTrackWithMessageId(t *testing.T) {
 	defer client.Close()
 
 	client.Enqueue(Track{
-		Event:  "Download",
-		UserId: "123456",
+		Event:       "Download",
+		UserId:      "123456",
+		AnonymousId: "789012",
 		Properties: Properties{
 			"application": "Rudder Desktop",
 			"version":     "1.1.0",
@@ -549,7 +556,7 @@ func TestTrackWithMessageId(t *testing.T) {
 }
 
 func TestTrackWithContext(t *testing.T) {
-	var ref = fixture("test-context-track.json")
+	ref := fixture("test-context-track.json")
 
 	body, server := mockServer()
 	defer server.Close()
@@ -565,8 +572,9 @@ func TestTrackWithContext(t *testing.T) {
 	defer client.Close()
 
 	client.Enqueue(Track{
-		Event:  "Download",
-		UserId: "123456",
+		Event:       "Download",
+		UserId:      "123456",
+		AnonymousId: "789012",
 		Properties: Properties{
 			"application": "Rudder Desktop",
 			"version":     "1.1.0",
@@ -586,7 +594,7 @@ func TestTrackWithContext(t *testing.T) {
 }
 
 func TestTrackMany(t *testing.T) {
-	var ref = fixture("test-many-track.json")
+	ref := fixture("test-many-track.json")
 
 	body, server := mockServer()
 	defer server.Close()
@@ -603,8 +611,9 @@ func TestTrackMany(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		client.Enqueue(Track{
-			Event:  "Download",
-			UserId: "123456",
+			Event:       "Download",
+			UserId:      "123456",
+			AnonymousId: "789012",
 			Properties: Properties{
 				"application": "Rudder Desktop",
 				"version":     i,
@@ -619,7 +628,7 @@ func TestTrackMany(t *testing.T) {
 }
 
 func TestTrackWithIntegrations(t *testing.T) {
-	var ref = fixture("test-integrations-track.json")
+	ref := fixture("test-integrations-track.json")
 
 	body, server := mockServer()
 	defer server.Close()
@@ -635,8 +644,9 @@ func TestTrackWithIntegrations(t *testing.T) {
 	defer client.Close()
 
 	client.Enqueue(Track{
-		Event:  "Download",
-		UserId: "123456",
+		Event:       "Download",
+		UserId:      "123456",
+		AnonymousId: "789012",
 		Properties: Properties{
 			"application": "Rudder Desktop",
 			"version":     "1.1.0",
@@ -748,7 +758,6 @@ func TestClientMarshalMessageError(t *testing.T) {
 
 	if err := <-errchan; err == nil {
 		t.Error("failure callback not triggered for unserializable message")
-
 	} else if _, ok := err.(*json.UnsupportedTypeError); !ok {
 		t.Errorf("invalid error type returned by unserializable message: %T", err)
 	}
@@ -793,10 +802,8 @@ func TestClientRoundTripperError(t *testing.T) {
 
 	if err := <-errchan; err == nil {
 		t.Error("failure callback not triggered for an invalid request")
-
 	} else if e, ok := err.(*url.Error); !ok {
 		t.Errorf("invalid error returned by round tripper: %T: %s", err, err)
-
 	} else if e.Err != errorTest {
 		t.Errorf("invalid error returned by round tripper: %T: %s", e.Err, e.Err)
 	}
@@ -826,10 +833,8 @@ func TestClientRetryError(t *testing.T) {
 
 	if err := <-errchan; err == nil {
 		t.Error("failure callback not triggered for a retry falure")
-
 	} else if e, ok := err.(*url.Error); !ok {
 		t.Errorf("invalid error returned by round tripper: %T: %s", err, err)
-
 	} else if e.Err != errorTest {
 		t.Errorf("invalid error returned by round tripper: %T: %s", e.Err, e.Err)
 	}
@@ -876,7 +881,6 @@ func TestClientResponseBodyError(t *testing.T) {
 
 	if err := <-errchan; err == nil {
 		t.Error("failure callback not triggered for a 400 response")
-
 	} else if err != errorTest {
 		t.Errorf("invalid error returned by erroring response body: %T: %s", err, err)
 	}
@@ -909,7 +913,6 @@ func TestClientMaxConcurrentRequests(t *testing.T) {
 
 	if err := <-errchan; err == nil {
 		t.Error("failure callback not triggered after reaching the request limit")
-
 	} else if err != ErrTooManyRequests {
 		t.Errorf("invalid error returned by erroring response body: %T: %s", err, err)
 	}
