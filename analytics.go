@@ -190,6 +190,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.Type = "alias"
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
+		m.SentAt = m.OriginalTimestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -198,6 +199,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.Type = "group"
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
+		m.SentAt = m.OriginalTimestamp
 		m.AnonymousId = makeAnonymousId(m.AnonymousId)
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
@@ -207,6 +209,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.Type = "identify"
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
+		m.SentAt = m.OriginalTimestamp
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
@@ -215,6 +218,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.Type = "page"
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
+		m.SentAt = m.OriginalTimestamp
 		m.AnonymousId = makeAnonymousId(m.AnonymousId)
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
@@ -224,6 +228,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.Type = "screen"
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
+		m.SentAt = m.OriginalTimestamp
 		m.AnonymousId = makeAnonymousId(m.AnonymousId)
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
@@ -233,6 +238,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.Type = "track"
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
+		m.SentAt = m.OriginalTimestamp
 		m.AnonymousId = makeAnonymousId(m.AnonymousId)
 		m.Context = makeContext(m.Context)
 		m.Channel = "server"
@@ -371,7 +377,7 @@ func (c *client) send(msgs []message, retryAttempt int) {
 
 	ts := c.now()
 	for i := range msgs {
-		err := msgs[i].setSentAt(ts, c.MaxMessageBytes)
+		err := msgs[i].setSentAt(ts)
 		if err != nil {
 			c.errorf("%s - %v", err, msgs[i].msg)
 			c.notifyFailure([]message{msgs[i]}, err)
