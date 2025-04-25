@@ -9,8 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: [ '1.24', '1.23', '1.22', '1.21','1.20', '1.19', '1.18']
-    
+        go: [ '1.24', '1.23', '1.22', '1.21','1.20', '1.19']
+
     steps:
       - uses: actions/checkout@v5
         name: Checkout source code
@@ -24,4 +24,4 @@ jobs:
         run: go build -v ./...
 
       - name: Test Go ${{ matrix.go }}
-        run: go test  ./... -v
+        run: go test -race ./... -v
