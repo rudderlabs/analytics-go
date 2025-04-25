@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tidwall/gjson"
+	"github.com/grafana/jsonparser"
 )
 
 // Version of the client.
@@ -304,9 +304,17 @@ func (c *client) getNodePayload(msgs []message) map[int][]message {
 	nodePayload := make(map[int][]message)
 	totalNodes := c.totalNodes
 	for _, msg := range msgs {
-		userId := gjson.GetBytes(msg.json, "userId").String()
-		anonymousId := gjson.GetBytes(msg.json, "anonymousId").String()
-		rudderId := userId + ":" + anonymousId
+		userID, err := jsonparser.GetString(msg.json, "userId")
+		if err != nil {
+			c.errorf("failed to parse message payload: %v", err)
+			continue
+		}
+		anonymousID, err := jsonparser.GetString(msg.json, "anonymousId")
+		if err != nil && !errors.Is(err, jsonparser.KeyPathNotFoundError) {
+			c.errorf("failed to parse message payload: %v", err)
+			continue
+		}
+		rudderId := userID + ":" + anonymousID
 		hashInt := crc32.ChecksumIEEE([]byte(rudderId))
 		nodePayload[int(hashInt)%totalNodes] = append(nodePayload[int(hashInt)%totalNodes], msg)
 	}
@@ -331,37 +339,46 @@ func (c *client) getRevisedMsgs(nodePayload map[int][]message, startFrom int) []
 func (c *client) setNodeCount() {
 	const attempts = 10
 	for i := 0; i < attempts; i++ {
-		url := c.Endpoint + "/cluster-info"
-		req, err := http.NewRequest("GET", url, bytes.NewReader([]byte{}))
-		if err != nil {
-			c.errorf("creating request - %s", err)
+		if i != 0 {
 			time.Sleep(200 * time.Millisecond)
+		}
+		nodeCount, err := c.clusterNodeCount()
+		if err != nil {
+			c.errorf("fetching clusterInfo attempt #%d failed: %v", i+1, err)
 			continue
 		}
-
-		req.Header.Add("User-Agent", "analytics-go (version: "+Version+")")
-		req.SetBasicAuth(c.key, "")
-
-		res, err := c.http.Do(req)
-		if err != nil {
-			c.errorf("sending request - %s", err)
-			time.Sleep(200 * time.Millisecond)
-			continue
-		}
-		if res.StatusCode == 200 {
-			body, err := io.ReadAll(res.Body)
-			if err == nil {
-				c.totalNodes = int(gjson.GetBytes(body, "nodeCount").Int())
-				res.Body.Close()
-				return
-			} else {
-				res.Body.Close()
-				time.Sleep(200 * time.Millisecond)
-			}
-		} else {
-			time.Sleep(200 * time.Millisecond)
-		}
+		c.totalNodes = nodeCount
+		return
 	}
+}
+
+func (c *client) clusterNodeCount() (int, error) {
+	url := c.Endpoint + "/cluster-info"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("creating request - %w", err)
+	}
+
+	req.Header.Add("User-Agent", "analytics-go (version: "+Version+")")
+	req.SetBasicAuth(c.key, "")
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("sending request - %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("got response code %s", res.Status)
+	}
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read cluster-info response: %w", err)
+	}
+	nodeCount, err := jsonparser.GetInt(body, "nodeCount")
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse cluster-info response: %w", err)
+	}
+	return int(nodeCount), nil
 }
 
 func (c *client) getMarshalled(msgs []message) ([]byte, error) {
