@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 // Version of the client.
@@ -304,6 +306,20 @@ func (c *client) sendAsync(msgs []message, wg *sync.WaitGroup, ex *executor) {
 		c.errorf("sending messages failed - %s", ErrTooManyRequests)
 		c.notifyFailure(msgs, ErrTooManyRequests)
 	}
+}
+
+// Split based on Anonymous ID
+func (c *client) getNodePayloadOld(msgs []message) map[int][]message {
+	nodePayload := make(map[int][]message)
+	totalNodes := c.totalNodes
+	for _, msg := range msgs {
+		userId := gjson.GetBytes(msg.json, "userId").String()
+		anonymousId := gjson.GetBytes(msg.json, "anonymousId").String()
+		rudderId := userId + ":" + anonymousId
+		hashInt := crc32.ChecksumIEEE([]byte(rudderId))
+		nodePayload[int(hashInt)%totalNodes] = append(nodePayload[int(hashInt)%totalNodes], msg)
+	}
+	return nodePayload
 }
 
 // Split based on Anonymous ID
