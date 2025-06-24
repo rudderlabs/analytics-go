@@ -9,16 +9,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: [ '1.19', '1.18', '1.17' ]
+        go: [ '1.24', '1.23', '1.22', '1.21','1.20', '1.19', '1.18']
     
     steps:
-      - uses: actions/checkout@v3
-      - name: Setup Go ${{ matrix.go }}
-        uses: actions/setup-go@v3
+      - uses: actions/checkout@v4
+        name: Checkout source code
+
+      - uses: actions/setup-go@v5
+        name: Setup Go ${{ matrix.go }}
         with:
           go-version: ${{ matrix.go }}
 
       - name: Build Go ${{ matrix.go }}
         run: go build -v ./...
+
       - name: Test Go ${{ matrix.go }}
         run: go test  ./... -v
