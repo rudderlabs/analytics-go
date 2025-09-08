@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v5
         name: Checkout source code
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         name: Setup Go ${{ matrix.go }}
         with:
           go-version: ${{ matrix.go }}
