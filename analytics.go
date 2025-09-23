@@ -18,7 +18,7 @@ import (
 )
 
 // Version of the client.
-const Version = "4.2.1"
+const Version = "4.2.2"
 
 // This interface is the main API exposed by the analytics package.
 // Values that satsify this interface are returned by the client constructors
