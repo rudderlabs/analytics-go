@@ -11,9 +11,10 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/tidwall/gjson"
+	"github.com/grafana/jsonparser"
 )
 
 // Version of the client.
@@ -58,7 +59,7 @@ type client struct {
 	// that it has finished flushing all queued messages.
 	quit       chan struct{}
 	shutdown   chan struct{}
-	totalNodes int
+	totalNodes atomic.Int64
 	// This HTTP client is used to send requests to the backend, it uses the
 	// HTTP transport provided in the configuration.
 	http http.Client
@@ -94,7 +95,7 @@ func NewWithConfig(writeKey string, config Config) (cli Client, err error) {
 		shutdown: make(chan struct{}),
 		http:     makeHttpClient(config.Transport),
 	}
-	c.totalNodes = 1
+	c.totalNodes.Store(1)
 
 	go c.loop()
 
@@ -302,11 +303,19 @@ func (c *client) sendAsync(msgs []message, wg *sync.WaitGroup, ex *executor) {
 // Split based on Anonymous ID
 func (c *client) getNodePayload(msgs []message) map[int][]message {
 	nodePayload := make(map[int][]message)
-	totalNodes := c.totalNodes
+	totalNodes := int(c.totalNodes.Load())
 	for _, msg := range msgs {
-		userId := gjson.GetBytes(msg.json, "userId").String()
-		anonymousId := gjson.GetBytes(msg.json, "anonymousId").String()
-		rudderId := userId + ":" + anonymousId
+		userID, err := jsonparser.GetString(msg.json, "userId")
+		if err != nil && !errors.Is(err, jsonparser.KeyPathNotFoundError) {
+			c.errorf("failed to parse message payload: %v", err)
+			continue
+		}
+		anonymousID, err := jsonparser.GetString(msg.json, "anonymousId")
+		if err != nil && !errors.Is(err, jsonparser.KeyPathNotFoundError) {
+			c.errorf("failed to parse message payload: %v", err)
+			continue
+		}
+		rudderId := userID + ":" + anonymousID
 		hashInt := crc32.ChecksumIEEE([]byte(rudderId))
 		nodePayload[int(hashInt)%totalNodes] = append(nodePayload[int(hashInt)%totalNodes], msg)
 	}
@@ -331,37 +340,50 @@ func (c *client) getRevisedMsgs(nodePayload map[int][]message, startFrom int) []
 func (c *client) setNodeCount() {
 	const attempts = 10
 	for i := 0; i < attempts; i++ {
-		url := c.Endpoint + "/cluster-info"
-		req, err := http.NewRequest("GET", url, bytes.NewReader([]byte{}))
-		if err != nil {
-			c.errorf("creating request - %s", err)
+		if i != 0 {
 			time.Sleep(200 * time.Millisecond)
+		}
+		nodeCount, err := c.clusterNodeCount()
+		if err != nil {
+			c.errorf("fetching clusterInfo attempt #%d failed: %v", i+1, err)
 			continue
 		}
-
-		req.Header.Add("User-Agent", "analytics-go (version: "+Version+")")
-		req.SetBasicAuth(c.key, "")
-
-		res, err := c.http.Do(req)
-		if err != nil {
-			c.errorf("sending request - %s", err)
-			time.Sleep(200 * time.Millisecond)
+		if nodeCount == 0 {
+			c.errorf("clusterInfo attempt #%d returned zero nodeCount, ignoring it", i+1)
 			continue
 		}
-		if res.StatusCode == 200 {
-			body, err := io.ReadAll(res.Body)
-			if err == nil {
-				c.totalNodes = int(gjson.GetBytes(body, "nodeCount").Int())
-				res.Body.Close()
-				return
-			} else {
-				res.Body.Close()
-				time.Sleep(200 * time.Millisecond)
-			}
-		} else {
-			time.Sleep(200 * time.Millisecond)
-		}
+		c.totalNodes.Store(int64(nodeCount))
+		return
 	}
+}
+
+func (c *client) clusterNodeCount() (int, error) {
+	url := c.Endpoint + "/cluster-info"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, fmt.Errorf("creating request - %w", err)
+	}
+
+	req.Header.Add("User-Agent", "analytics-go (version: "+Version+")")
+	req.SetBasicAuth(c.key, "")
+
+	res, err := c.http.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("sending request - %w", err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("got response code %s", res.Status)
+	}
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read cluster-info response: %w", err)
+	}
+	nodeCount, err := jsonparser.GetInt(body, "nodeCount")
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse cluster-info response: %w", err)
+	}
+	return int(nodeCount), nil
 }
 
 func (c *client) getMarshalled(msgs []message) ([]byte, error) {
@@ -388,15 +410,8 @@ func (c *client) send(msgs []message, retryAttempt int) {
 	for k, b := range nodePayload {
 		for i := 0; i != attempts; i++ {
 			// Get Node Count from Client
-			if c.totalNodes == 0 {
-				/*
-					Since we are running the setNodeCount in a seperate goroutine from the main thread,  we should not send out any packets till
-					we have atleast one API call made and totalNodes are set to 1.If the proxy server takes more time to send the response
-					we skip this attempt and move to the next attempt.
-				*/
-				continue
-			}
-			targetNode := strconv.Itoa(k % c.totalNodes)
+			totalNodes := int(c.totalNodes.Load())
+			targetNode := strconv.Itoa(k % totalNodes)
 			marshalB, err := c.getMarshalled(b)
 			if err != nil {
 				c.errorf("marshalling messages - %s", err)
@@ -487,7 +502,7 @@ func (c *client) upload(b []byte, targetNode string) error {
 	req.Header.Add("Content-Length", strconv.Itoa(len(b)))
 	if !c.NoProxySupport {
 		req.Header.Add("RS-targetNode", targetNode)
-		req.Header.Add("RS-nodeCount", strconv.Itoa(c.totalNodes))
+		req.Header.Add("RS-nodeCount", strconv.Itoa(int(c.totalNodes.Load())))
 		req.Header.Add("RS-userAgent", "serverSDK")
 	}
 	req.SetBasicAuth(c.key, "")
