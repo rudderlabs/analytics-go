@@ -9,6 +9,11 @@ jobs:
     name: Check PR title
     runs-on: ubuntu-latest
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - name: Checkout source branch
         uses: actions/checkout@v5
 
