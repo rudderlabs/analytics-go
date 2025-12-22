@@ -21,11 +21,11 @@ func NewIntegrations() Integrations {
 }
 
 func (i Integrations) EnableAll() Integrations {
-	return i.Enable("all")
+	return i.Enable("All")
 }
 
 func (i Integrations) DisableAll() Integrations {
-	return i.Disable("all")
+	return i.Disable("All")
 }
 
 func (i Integrations) Enable(name string) Integrations {
