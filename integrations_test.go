@@ -6,7 +6,7 @@ import (
 )
 
 func TestIntegrationsEnableAll(t *testing.T) {
-	i0 := Integrations{"all": true}
+	i0 := Integrations{"All": true}
 	i1 := NewIntegrations().EnableAll()
 
 	if !reflect.DeepEqual(i0, i1) {
@@ -15,7 +15,7 @@ func TestIntegrationsEnableAll(t *testing.T) {
 }
 
 func TestIntegrationsDisableAll(t *testing.T) {
-	i0 := Integrations{"all": false}
+	i0 := Integrations{"All": false}
 	i1 := NewIntegrations().DisableAll()
 
 	if !reflect.DeepEqual(i0, i1) {
