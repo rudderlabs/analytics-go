@@ -139,9 +139,25 @@ func (c *Config) validate() error {
 		}
 	}
 
+	if c.MaxMessageBytes > maxHardLimitBytes {
+		return ConfigError{
+			Reason: "MaxMessageBytes cannot exceed 4 MB hard limit",
+			Field:  "MaxMessageBytes",
+			Value:  c.MaxMessageBytes,
+		}
+	}
+
 	if c.MaxBatchBytes < 0 {
 		return ConfigError{
 			Reason: "negetive value is not supported for MaxBatchBytes",
+			Field:  "MaxBatchBytes",
+			Value:  c.MaxBatchBytes,
+		}
+	}
+
+	if c.MaxBatchBytes > maxHardLimitBytes {
+		return ConfigError{
+			Reason: "MaxBatchBytes cannot exceed 4 MB hard limit",
 			Field:  "MaxBatchBytes",
 			Value:  c.MaxBatchBytes,
 		}
@@ -199,10 +215,22 @@ func makeConfig(c Config) Config {
 
 	if c.MaxMessageBytes == 0 {
 		c.MaxMessageBytes = defMaxMessageBytes
+	} else if c.MaxMessageBytes > maxHardLimitBytes {
+		// Log warning and enforce hard limit
+		if c.Logger != nil {
+			c.Logger.Errorf("MaxMessageBytes (%d) exceeds 4MB hard limit, setting to 4MB", c.MaxMessageBytes)
+		}
+		c.MaxMessageBytes = maxHardLimitBytes
 	}
 
 	if c.MaxBatchBytes == 0 {
 		c.MaxBatchBytes = defMaxBatchBytes
+	} else if c.MaxBatchBytes > maxHardLimitBytes {
+		// Log warning and enforce hard limit
+		if c.Logger != nil {
+			c.Logger.Errorf("MaxBatchBytes (%d) exceeds 4MB hard limit, setting to 4MB", c.MaxBatchBytes)
+		}
+		c.MaxBatchBytes = maxHardLimitBytes
 	}
 
 	if c.Gzip != 0 {
