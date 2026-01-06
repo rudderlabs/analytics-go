@@ -76,17 +76,3 @@ func TestConfigMaxBatchBytesHardLimit(t *testing.T) {
 		t.Error("invalid field error reported:", e)
 	}
 }
-
-func TestMakeConfigEnforcesHardLimits(t *testing.T) {
-	c := makeConfig(Config{
-		MaxMessageBytes: 5000000, // 5 MB > 4 MB limit
-		MaxBatchBytes:   5000000, // 5 MB > 4 MB limit
-	})
-
-	if c.MaxMessageBytes != maxHardLimitBytes {
-		t.Errorf("Expected MaxMessageBytes to be enforced to %d, got %d", maxHardLimitBytes, c.MaxMessageBytes)
-	}
-	if c.MaxBatchBytes != maxHardLimitBytes {
-		t.Errorf("Expected MaxBatchBytes to be enforced to %d, got %d", maxHardLimitBytes, c.MaxBatchBytes)
-	}
-}

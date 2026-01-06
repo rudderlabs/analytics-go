@@ -215,22 +215,10 @@ func makeConfig(c Config) Config {
 
 	if c.MaxMessageBytes == 0 {
 		c.MaxMessageBytes = defMaxMessageBytes
-	} else if c.MaxMessageBytes > maxHardLimitBytes {
-		// Log warning and enforce hard limit
-		if c.Logger != nil {
-			c.Logger.Errorf("MaxMessageBytes (%d) exceeds 4MB hard limit, setting to 4MB", c.MaxMessageBytes)
-		}
-		c.MaxMessageBytes = maxHardLimitBytes
 	}
 
 	if c.MaxBatchBytes == 0 {
 		c.MaxBatchBytes = defMaxBatchBytes
-	} else if c.MaxBatchBytes > maxHardLimitBytes {
-		// Log warning and enforce hard limit
-		if c.Logger != nil {
-			c.Logger.Errorf("MaxBatchBytes (%d) exceeds 4MB hard limit, setting to 4MB", c.MaxBatchBytes)
-		}
-		c.MaxBatchBytes = maxHardLimitBytes
 	}
 
 	if c.Gzip != 0 {
