@@ -3,6 +3,7 @@ package analytics
 import (
 	"net/http"
 	"time"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/segmentio/backo-go"
@@ -141,7 +142,10 @@ func (c *Config) validate() error {
 
 	if c.MaxMessageBytes > maxHardLimitBytes {
 		return ConfigError{
-			Reason: "MaxMessageBytes cannot exceed 4 MB hard limit",
+			Reason: fmt.Sprintf(
+				"MaxMessageBytes cannot exceed %d MB hard limit",
+				maxHardLimitBytes / (1024 * 1024),
+			),
 			Field:  "MaxMessageBytes",
 			Value:  c.MaxMessageBytes,
 		}
@@ -157,7 +161,10 @@ func (c *Config) validate() error {
 
 	if c.MaxBatchBytes > maxHardLimitBytes {
 		return ConfigError{
-			Reason: "MaxBatchBytes cannot exceed 4 MB hard limit",
+			Reason: fmt.Sprintf(
+				"MaxBatchBytes cannot exceed %d MB hard limit",
+				maxHardLimitBytes / (1024 * 1024),
+			),
 			Field:  "MaxBatchBytes",
 			Value:  c.MaxBatchBytes,
 		}
