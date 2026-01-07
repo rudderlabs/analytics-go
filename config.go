@@ -143,8 +143,8 @@ func (c *Config) validate() error {
 	if c.MaxMessageBytes > maxHardLimitBytes {
 		return ConfigError{
 			Reason: fmt.Sprintf(
-				"MaxMessageBytes cannot exceed %d MB hard limit",
-				maxHardLimitBytes / (1024 * 1024),
+				"MaxMessageBytes cannot exceed %d bytes hard limit",
+				maxHardLimitBytes,
 			),
 			Field:  "MaxMessageBytes",
 			Value:  c.MaxMessageBytes,
