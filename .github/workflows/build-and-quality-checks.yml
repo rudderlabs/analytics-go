@@ -2,7 +2,7 @@ name: Code Quality Checks
 on:
   pull_request:
     branches: ['master']
-    types: ['opened', 'reopened', 'synchronize']
+    types: ['opened', 'reopened', 'synchronize', 'edited']
 
 permissions:
   contents: read
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: [ '1.24', '1.23', '1.22', '1.21','1.20', '1.19']
+        go: [ '1.19', 'go.mod', 'stable' ]
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -26,10 +26,11 @@ jobs:
       - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v6.1.0
         name: Setup Go ${{ matrix.go }}
         with:
-          go-version: ${{ matrix.go }}
+          go-version: ${{ matrix.go != 'go.mod' && matrix.go || '' }}
+          go-version-file: ${{ matrix.go == 'go.mod' && matrix.go || '' }}
 
-      - name: Build Go ${{ matrix.go }}
+      - name: Build Go
         run: go build -v ./...
 
-      - name: Test Go ${{ matrix.go }}
+      - name: Test Go
         run: go test -race ./... -v
