@@ -162,8 +162,8 @@ func (c *Config) validate() error {
 	if c.MaxBatchBytes > maxHardLimitBytes {
 		return ConfigError{
 			Reason: fmt.Sprintf(
-				"MaxBatchBytes cannot exceed %d MB hard limit",
-				maxHardLimitBytes / (1024 * 1024),
+				"MaxBatchBytes cannot exceed %d bytes hard limit",
+				maxHardLimitBytes,
 			),
 			Field:  "MaxBatchBytes",
 			Value:  c.MaxBatchBytes,
