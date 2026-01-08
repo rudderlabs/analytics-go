@@ -232,7 +232,7 @@ func ExampleTrack() {
 	//       "context": {
 	//         "library": {
 	//           "name": "analytics-go",
-	//           "version": "4.2.2"
+	//           "version": "4.2.3"
 	//         }
 	//       },
 	//       "event": "Download",
