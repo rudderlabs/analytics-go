@@ -3,6 +3,7 @@ package analytics
 import (
 	"net/http"
 	"time"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/segmentio/backo-go"
@@ -139,9 +140,31 @@ func (c *Config) validate() error {
 		}
 	}
 
+	if c.MaxMessageBytes > maxHardLimitBytes {
+		return ConfigError{
+			Reason: fmt.Sprintf(
+				"MaxMessageBytes cannot exceed %d bytes hard limit",
+				maxHardLimitBytes,
+			),
+			Field:  "MaxMessageBytes",
+			Value:  c.MaxMessageBytes,
+		}
+	}
+
 	if c.MaxBatchBytes < 0 {
 		return ConfigError{
 			Reason: "negetive value is not supported for MaxBatchBytes",
+			Field:  "MaxBatchBytes",
+			Value:  c.MaxBatchBytes,
+		}
+	}
+
+	if c.MaxBatchBytes > maxHardLimitBytes {
+		return ConfigError{
+			Reason: fmt.Sprintf(
+				"MaxBatchBytes cannot exceed %d bytes hard limit",
+				maxHardLimitBytes,
+			),
 			Field:  "MaxBatchBytes",
 			Value:  c.MaxBatchBytes,
 		}
