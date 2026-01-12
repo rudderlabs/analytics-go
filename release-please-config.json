@@ -1,0 +1,45 @@
+{
+  "release-type": "go",
+  "bump-minor-pre-major": true,
+  "pull-request-title-pattern": "chore: release ${version}",
+  "include-component-in-tag": false,
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "Features",
+      "hidden": false
+    },
+    {
+      "type": "fix",
+      "section": "Bug Fixes",
+      "hidden": false
+    },
+    {
+      "type": "chore",
+      "section": "Miscellaneous",
+      "hidden": false
+    },
+    {
+      "type": "refactor",
+      "section": "Miscellaneous",
+      "hidden": false
+    },
+    {
+      "type": "test",
+      "section": "Miscellaneous",
+      "hidden": false
+    },
+    {
+      "type": "doc",
+      "section": "Documentation",
+      "hidden": false
+    }
+  ],
+  "always-update": true,
+  "packages": {
+    ".": {
+      "package-name": "analytics-go",
+      "release-type": "go"
+    }
+  }
+}
