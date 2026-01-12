@@ -69,7 +69,7 @@ for BRANCH in $BRANCHES; do
       echo "Failed to delete branch: $BRANCH"
       continue
     }
-    ((DELETED_COUNT++))
+    DELETED_COUNT=$((DELETED_COUNT + 1))
   fi
 done
 
