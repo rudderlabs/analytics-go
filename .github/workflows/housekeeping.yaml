@@ -36,10 +36,6 @@ jobs:
   branches:
     name: Clean up stale branches
     runs-on: [self-hosted, Linux, X64]
-
-  branches:
-    name: Clean up stale branches
-    runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: write
       pull-requests: read
