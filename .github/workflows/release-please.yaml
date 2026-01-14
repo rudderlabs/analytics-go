@@ -9,6 +9,9 @@ concurrency:
 
 name: release-please
 
+permissions:
+  contents: read
+
 jobs:
   release-please:
     permissions:
