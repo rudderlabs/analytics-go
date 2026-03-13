@@ -18,6 +18,8 @@
 
 <p align="center"><a href="https://github.com/rudderlabs/analytics-go"><img src="https://img.shields.io/github/v/release/rudderlabs/analytics-go.svg?label=Version"/></a></p>
 
+<p align="center"><a href="https://deepwiki.com/rudderlabs/analytics-go"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"/></a></p>
+
 ----
 
 # RudderStack Go SDK
