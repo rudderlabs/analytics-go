@@ -4,6 +4,10 @@ on:
     branches: ['master']
     types: ['opened', 'reopened', 'edited', 'synchronize']
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   check_pr_title:
     name: Check PR title
