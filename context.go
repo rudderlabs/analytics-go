@@ -22,7 +22,6 @@ type Context struct {
 	IP        net.IP       `json:"ip,omitempty"`
 	Direct    bool         `json:"direct,omitempty"`
 	Locale    string       `json:"locale,omitempty"`
-	GroupID   string       `json:"groupId,omitempty"`
 	Timezone  string       `json:"timezone,omitempty"`
 	UserAgent string       `json:"userAgent,omitempty"`
 	Traits    Traits       `json:"traits,omitempty"`
