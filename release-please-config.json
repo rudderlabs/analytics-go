@@ -39,7 +39,13 @@
   "packages": {
     ".": {
       "package-name": "analytics-go",
-      "release-type": "go"
+      "release-type": "go",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "analytics.go"
+        }
+      ]
     }
   }
 }

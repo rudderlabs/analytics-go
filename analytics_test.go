@@ -75,6 +75,8 @@ type testErrorMessage struct{}
 
 func (m testErrorMessage) Validate() error { return errorTest }
 
+const fixtureVersion = "__VERSION__"
+
 var (
 	// A control error returned by mock functions to emulate a failure.
 	errorTest = errors.New("test error")
@@ -143,7 +145,7 @@ func fixture(name string) string {
 	if err != nil {
 		panic(err)
 	}
-	return string(b)
+	return strings.ReplaceAll(string(b), `"`+fixtureVersion+`"`, `"`+Version+`"`)
 }
 
 func mockId() string { return "I'm unique" }
@@ -222,7 +224,8 @@ func ExampleTrack() {
 		},
 	})
 
-	fmt.Printf("%s\n", <-body)
+	result := strings.ReplaceAll(string(<-body), `"`+Version+`"`, `"`+fixtureVersion+`"`)
+	fmt.Printf("%s\n", result)
 	// Output:
 	// {
 	//   "batch": [
@@ -232,7 +235,7 @@ func ExampleTrack() {
 	//       "context": {
 	//         "library": {
 	//           "name": "analytics-go",
-	//           "version": "4.2.3"
+	//           "version": "__VERSION__"
 	//         }
 	//       },
 	//       "event": "Download",
@@ -249,6 +252,34 @@ func ExampleTrack() {
 	//     }
 	//   ]
 	// }
+}
+
+func TestClientReportsVersion(t *testing.T) {
+	userAgent := make(chan string, 1)
+	transport := roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		userAgent <- r.UserAgent()
+		return testTransportOK.RoundTrip(r)
+	})
+
+	client, err := NewWithConfig(WRITE_KEY, Config{
+		Transport:   transport,
+		BatchSize:   1,
+		DisableGzip: true,
+	})
+	if err != nil {
+		t.Fatal("creating client:", err)
+	}
+	if err := client.Enqueue(Track{UserId: "user-123", Event: "Version Test"}); err != nil {
+		t.Fatal("enqueuing event:", err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal("closing client:", err)
+	}
+
+	expected := "analytics-go (version: " + Version + ")"
+	if actual := <-userAgent; actual != expected {
+		t.Errorf("invalid User-Agent: expected %q, received %q", expected, actual)
+	}
 }
 
 func TestEnqueue(t *testing.T) {
