@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.3.1](https://github.com/rudderlabs/analytics-go/compare/v4.3.0...v4.3.1) (2026-09-10)
+
+
+### Miscellaneous
+
+* bump the actions group across 1 directory with 7 updates ([#78](https://github.com/rudderlabs/analytics-go/issues/78)) ([da43c18](https://github.com/rudderlabs/analytics-go/commit/da43c18358d8f911ce00f9d1f5dfed328c2d543a))
+* update codeowners ([#77](https://github.com/rudderlabs/analytics-go/issues/77)) ([f942617](https://github.com/rudderlabs/analytics-go/commit/f942617099f65a1d39728ea3db4d93d8243544ec))
+
 ## [4.3.0](https://github.com/rudderlabs/analytics-go/compare/v4.2.3...v4.3.0) (2026-08-27)
 
 
