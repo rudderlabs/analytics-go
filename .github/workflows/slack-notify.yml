@@ -20,11 +20,13 @@ jobs:
       - name: Send message to Slack channel
         id: slack
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d  # v4.0.0
+        continue-on-error: true
         env:
           PROJECT_NAME: 'Go SDK'
         with:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           method: chat.postMessage
+          errors: true
           payload-templated: true
           retries: rapid
           payload: |
@@ -47,12 +49,12 @@ jobs:
                   "text": {
                     "type": "mrkdwn",
                     "text": "*Release: <${{ github.event.release.html_url }}|${{ github.event.release.tag_name }}>*"
-                  }
-                },
+                  },
                   "accessory": {
                     "type": "image",
                     "image_url": "https://cdn.jsdelivr.net/npm/programming-languages-logos/src/go/go.png",
                     "alt_text": "Go Icon"
                   }
+                }
               ]
             }
