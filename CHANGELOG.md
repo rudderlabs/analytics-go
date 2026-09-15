@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.3.2](https://github.com/rudderlabs/analytics-go/compare/v4.3.1...v4.3.2) (2026-09-15)
+
+
+### Bug Fixes
+
+* restore go sdk release notifications ([#81](https://github.com/rudderlabs/analytics-go/issues/81)) ([5f1b19e](https://github.com/rudderlabs/analytics-go/commit/5f1b19eeea6a131b279b8725174ff47b1da9a9cc))
+
 ## [4.3.1](https://github.com/rudderlabs/analytics-go/compare/v4.3.0...v4.3.1) (2026-09-11)
 
 
