@@ -3,6 +3,7 @@ name: Handle Stale PRs and Branches
 on:
   schedule:
     - cron: '1 0 * * *' # every day at 00:01
+  workflow_dispatch: # manual trigger, added to validate the arc-amd64 runner migration (INF-2686)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.sha }}
@@ -14,7 +15,7 @@ permissions:
 jobs:
   prs:
     name: Clean up stale PRs
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: arc-amd64
 
     permissions:
       issues: write
@@ -38,7 +39,7 @@ jobs:
 
   branches:
     name: Clean up stale branches
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: arc-amd64
     permissions:
       contents: write
       pull-requests: read
