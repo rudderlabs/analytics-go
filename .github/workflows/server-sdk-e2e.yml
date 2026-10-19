@@ -1,0 +1,47 @@
+name: Server SDK E2E
+
+on:
+  workflow_call:
+    secrets:
+      E2E_APP_PRIVATE_KEY:
+        required: true
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: reliability is local delivery; full also uses a live CI pipeline
+        type: choice
+        options: [reliability, full]
+        default: reliability
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+# Independent requests must not cancel earlier merge or release validations.
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Create a central validation token
+        id: token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.E2E_APP_CLIENT_ID }}
+          private-key: ${{ secrets.E2E_APP_PRIVATE_KEY }}
+          owner: rudderlabs
+          repositories: rudder-sdk-e2e-tests
+          permission-actions: write
+      - name: Detect this repository, dispatch, and wait for its result
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}
+          SDK_E2E_SUITE: ${{ inputs.suite || vars.SDK_E2E_SUITE || 'reliability' }}
+        run: python3 .github/scripts/dispatch-sdk-e2e.py

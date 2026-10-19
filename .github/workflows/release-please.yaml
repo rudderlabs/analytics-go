@@ -13,7 +13,14 @@ permissions:
   contents: read
 
 jobs:
+  sdk-e2e:
+    # Validate every default-branch commit before creating release tags.
+    uses: ./.github/workflows/server-sdk-e2e.yml
+    secrets:
+      E2E_APP_PRIVATE_KEY: ${{ secrets.E2E_APP_PRIVATE_KEY }}
+
   release-please:
+    needs: sdk-e2e
     permissions:
       contents: read
     runs-on: ubuntu-latest
