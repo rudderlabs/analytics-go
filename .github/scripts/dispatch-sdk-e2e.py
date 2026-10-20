@@ -47,8 +47,14 @@ def inputs(environment):
     if not run_id.isdigit() or not attempt.isdigit():
         raise ValueError("invalid caller run identity")
     correlation = f"{repository.split('/')[1]}-{run_id}-{attempt}-{sha}"
-    return {"selection": "auto", "source_repository": repository, "source_sha": sha,
-            "suite": suite, "request_id": correlation}
+    selected = {"selection": "auto", "source_repository": repository, "source_sha": sha,
+                "suite": suite, "request_id": correlation}
+    if environment.get("GITHUB_EVENT_NAME") == "pull_request":
+        match = re.fullmatch(r"refs/pull/([1-9][0-9]*)/merge", environment.get("GITHUB_REF", ""))
+        if not match:
+            raise ValueError("pull_request validation requires a PR merge ref")
+        selected["source_pr"] = match[1]
+    return selected
 
 
 def validate_run(run, run_id, correlation):

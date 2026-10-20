@@ -1,10 +1,11 @@
 name: Server SDK E2E
 
 on:
-  workflow_call:
-    secrets:
-      E2E_APP_PRIVATE_KEY:
-        required: true
+  pull_request:
+    branches: [master]
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [master]
   workflow_dispatch:
     inputs:
       suite:
@@ -21,6 +22,8 @@ permissions:
 # Independent requests must not cancel earlier merge or release validations.
 jobs:
   validate:
+    # Fork PRs cannot access the dispatch App secret.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
