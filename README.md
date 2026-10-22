@@ -111,6 +111,21 @@ func main() {
 }
 ```
 
+## Flushing without closing
+
+In serverless or short-lived processes, call `Flush` to send queued messages and keep the client open. It blocks until messages enqueued before the call are sent (or fail after retries), or until the context is done:
+
+```go
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+
+if f, ok := client.(interface{ Flush(context.Context) error }); ok {
+    if err := f.Flush(ctx); err != nil {
+        // ctx.Err() on timeout, analytics.ErrClosed after Close.
+    }
+}
+```
+
 ## Gzip support
 
 The Go SDK supports Gzip compression from version 4.1.0 and it is enabled by default. However, you can disable this feature by setting the `DisableGzip` parameter to `true` while initializing the SDK, as shown:
