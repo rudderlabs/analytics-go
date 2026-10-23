@@ -240,3 +240,141 @@ func TestFlushAfterClose(t *testing.T) {
 		t.Fatalf("Flush after Close: got %v, want %v", err, ErrClosed)
 	}
 }
+
+// gate returns a channel and an idempotent func that closes it, so a deferred
+// call unblocks the transport or logger even when the test fails early.
+func gate() (chan struct{}, func()) {
+	ch := make(chan struct{})
+	var once sync.Once
+	return ch, func() { once.Do(func() { close(ch) }) }
+}
+
+func TestFlushAfterTooManyRequests(t *testing.T) {
+	var sent atomic.Int64
+	rejected := make(chan error, 1)
+	release, open := gate()
+	client, f := newFlushClient(t, Config{
+		BatchSize:             1,
+		maxConcurrentRequests: 1,
+		Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			<-release
+			return testTransportOK.RoundTrip(r)
+		}),
+		Callback: testCallback{
+			func(Message) { sent.Add(1) },
+			func(_ Message, err error) { rejected <- err },
+		},
+	})
+	defer client.Close()
+	defer open()
+
+	// The first send holds the only slot, so the second batch is rejected.
+	for i := 0; i < 2; i++ {
+		if err := client.Enqueue(Track{UserId: "A", Event: "B"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := <-rejected; !errors.Is(err, ErrTooManyRequests) {
+		t.Fatalf("failure callback: got %v, want %v", err, ErrTooManyRequests)
+	}
+
+	errc := make(chan error, 1)
+	go func() { errc <- f.Flush(flushCtx(t)) }()
+	open()
+
+	// A rejected send must not count as in flight, or Flush never returns.
+	if err := <-errc; err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if n := sent.Load(); n != 1 {
+		t.Fatalf("sent %d messages before Flush returned, want 1", n)
+	}
+}
+
+func TestFlushWaitsForSendsOfTimedOutFlush(t *testing.T) {
+	var sent atomic.Int64
+	release, open := gate()
+	client, f := newFlushClient(t, Config{
+		Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+			<-release
+			return testTransportOK.RoundTrip(r)
+		}),
+		Callback: testCallback{func(Message) { sent.Add(1) }, nil},
+	})
+	defer client.Close()
+	defer open()
+
+	if err := client.Enqueue(Track{UserId: "A", Event: "B"}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if err := f.Flush(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("first Flush: got %v, want %v", err, context.DeadlineExceeded)
+	}
+
+	// Nothing new is queued, but the first Flush's send is still running.
+	errc := make(chan error, 1)
+	go func() { errc <- f.Flush(flushCtx(t)) }()
+	select {
+	case err := <-errc:
+		t.Fatalf("second Flush returned %v while the earlier send was still running", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	open()
+	if err := <-errc; err != nil {
+		t.Fatalf("second Flush: %v", err)
+	}
+	if n := sent.Load(); n != 1 {
+		t.Fatalf("sent %d messages before Flush returned, want 1", n)
+	}
+}
+
+func TestFlushReturnsErrClosedWhenClosedWhileWaiting(t *testing.T) {
+	var sent atomic.Int64
+	var once sync.Once
+	parked := make(chan struct{})
+	release, open := gate()
+	// As in TestFlushSendsMessagesBufferedInChannel, a blocking logger parks
+	// the loop goroutine so it cannot take the flush request.
+	client, f := newFlushClient(t, Config{
+		Verbose:  true,
+		Callback: testCallback{func(Message) { sent.Add(1) }, nil},
+		Logger: testLogger{
+			logf: func(string, ...interface{}) {
+				once.Do(func() {
+					close(parked)
+					<-release
+				})
+			},
+		},
+	})
+	defer client.Close()
+	defer open()
+
+	if err := client.Enqueue(Track{UserId: "A", Event: "B"}); err != nil {
+		t.Fatal(err)
+	}
+	<-parked
+
+	errc := make(chan error, 1)
+	go func() { errc <- f.Flush(flushCtx(t)) }()
+	time.Sleep(50 * time.Millisecond) // let Flush block on handing over its request
+
+	closed := make(chan error, 1)
+	go func() { closed <- client.Close() }()
+
+	// The loop is still parked, so only Close can have released Flush.
+	if err := <-errc; !errors.Is(err, ErrClosed) {
+		t.Fatalf("Flush: got %v, want %v", err, ErrClosed)
+	}
+
+	open()
+	if err := <-closed; err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	if n := sent.Load(); n != 1 {
+		t.Fatalf("sent %d messages after Close, want 1", n)
+	}
+}
