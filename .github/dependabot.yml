@@ -3,24 +3,33 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
     groups:
       actions:
+        applies-to: version-updates
         patterns:
           - "*"
 
   - package-ecosystem: "gomod"
-    directory: "/" 
+    directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 0
+    cooldown:
+      default-days: 7
     groups:
       go-deps:
+        applies-to: version-updates
         patterns:
           - "*"
         update-types:
           - "minor"
           - "patch"
       go-deps-major:
+        applies-to: version-updates
         patterns:
           - "*"
         update-types:
