@@ -1,5 +1,23 @@
 # Changelog
 
+## [4.4.0](https://github.com/rudderlabs/analytics-go/compare/v4.3.1...v4.4.0) (2026-10-26)
+
+
+### Features
+
+* add Flush to send queued messages without closing the client ([#89](https://github.com/rudderlabs/analytics-go/issues/89)) ([33b5924](https://github.com/rudderlabs/analytics-go/commit/33b5924558a19d6329d51b60d341cdb556e085e3))
+
+
+### Bug Fixes
+
+* restore go sdk release notifications ([#81](https://github.com/rudderlabs/analytics-go/issues/81)) ([5f1b19e](https://github.com/rudderlabs/analytics-go/commit/5f1b19eeea6a131b279b8725174ff47b1da9a9cc))
+
+
+### Miscellaneous
+
+* apply security-first dependabot policy ([#90](https://github.com/rudderlabs/analytics-go/issues/90)) ([8de7d83](https://github.com/rudderlabs/analytics-go/commit/8de7d83ecdd5f92a429ccc0f0aaf8356dad37db7))
+* bump the actions group across 1 directory with 2 updates ([#88](https://github.com/rudderlabs/analytics-go/issues/88)) ([64a9016](https://github.com/rudderlabs/analytics-go/commit/64a901667e1014d80c9a27b33eaca255de622c9a))
+
 ## [4.3.1](https://github.com/rudderlabs/analytics-go/compare/v4.3.0...v4.3.1) (2026-09-11)
 
 
