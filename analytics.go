@@ -3,6 +3,7 @@ package analytics
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,11 +19,14 @@ import (
 )
 
 // Version of the client.
-const Version = "4.3.1" // x-release-please-version
+const Version = "4.4.0" // x-release-please-version
 
 // This interface is the main API exposed by the analytics package.
 // Values that satsify this interface are returned by the client constructors
 // provided by the package and provide a way to send messages via the HTTP API.
+//
+// They also implement `Flush(context.Context) error`, reachable through a type
+// assertion, to send queued messages without closing the client.
 type Client interface {
 	io.Closer
 
@@ -60,6 +64,14 @@ type client struct {
 	quit       chan struct{}
 	shutdown   chan struct{}
 	totalNodes atomic.Int64
+
+	// Flush sends a reply channel here; the backend goroutine answers with a
+	// channel closed once every send started before the request has finished.
+	flushes chan chan (<-chan struct{})
+
+	// Sends started since the last flush request. Owned by the loop goroutine.
+	inflight *sync.WaitGroup
+
 	// This HTTP client is used to send requests to the backend, it uses the
 	// HTTP transport provided in the configuration.
 	http http.Client
@@ -93,6 +105,7 @@ func NewWithConfig(writeKey string, config Config) (cli Client, err error) {
 		msgs:     make(chan Message, 100),
 		quit:     make(chan struct{}),
 		shutdown: make(chan struct{}),
+		flushes:  make(chan chan (<-chan struct{})),
 		http:     makeHttpClient(config.Transport),
 	}
 	c.totalNodes.Store(1)
@@ -278,12 +291,50 @@ func (c *client) Close() (err error) {
 	return
 }
 
+// Flush sends every message whose Enqueue call returned before Flush was
+// called, including a partially filled batch, without closing the client. It
+// blocks until those sends finish, successfully or after their final retry,
+// and returns nil. Messages enqueued concurrently with Flush may or may not be
+// included.
+//
+// If ctx is done first, Flush returns ctx.Err() and the sends carry on in the
+// background. It returns ErrClosed if the client was closed before the call.
+// Flush is safe to call concurrently with Enqueue and with other Flush calls.
+func (c *client) Flush(ctx context.Context) error {
+	select {
+	case <-c.quit:
+		return ErrClosed
+	default:
+	}
+
+	reply := make(chan (<-chan struct{}), 1)
+	select {
+	case c.flushes <- reply:
+	case <-c.quit:
+		return ErrClosed
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	// The loop answers as soon as it takes the request.
+	done := <-reply
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // Asychronously send a batched requests.
 func (c *client) sendAsync(msgs []message, wg *sync.WaitGroup, ex *executor) {
 	wg.Add(1)
+	inflight := c.inflight
+	inflight.Add(1)
 
 	if !ex.do(func() {
 		defer wg.Done()
+		defer inflight.Done()
 		defer func() {
 			// In case a bug is introduced in the send function that triggers
 			// a panic, we don't want this to ever crash the application so we
@@ -295,6 +346,7 @@ func (c *client) sendAsync(msgs []message, wg *sync.WaitGroup, ex *executor) {
 		c.send(msgs, 0)
 	}) {
 		wg.Done()
+		inflight.Done()
 		c.errorf("sending messages failed - %s", ErrTooManyRequests)
 		c.notifyFailure(msgs, ErrTooManyRequests)
 	}
@@ -556,6 +608,11 @@ func (c *client) loop() {
 		maxBatchBytes: c.maxBatchBytes(),
 	}
 
+	c.inflight = &sync.WaitGroup{}
+	// Closed once all sends before the latest flush request have finished.
+	flushed := make(chan struct{})
+	close(flushed)
+
 	for {
 		select {
 		case msg := <-c.msgs:
@@ -563,6 +620,27 @@ func (c *client) loop() {
 
 		case <-tick.C:
 			c.flush(&mq, wg, ex)
+
+		case reply := <-c.flushes:
+			// Every message enqueued before Flush was called is either already
+			// pushed or among the first len(c.msgs) in the channel. Bounding the
+			// drain keeps concurrent Enqueue calls from starving the loop.
+			for n := len(c.msgs); n > 0; n-- {
+				c.push(&mq, <-c.msgs, wg, ex)
+			}
+			c.flush(&mq, wg, ex)
+
+			// Chain to the previous flush so this one also covers sends that
+			// started before it and are still running.
+			sends, prev, done := c.inflight, flushed, make(chan struct{})
+			go func() {
+				sends.Wait()
+				<-prev
+				close(done)
+			}()
+			c.inflight = &sync.WaitGroup{}
+			flushed = done
+			reply <- done
 
 		case <-c.quit:
 			c.debugf("exit requested – draining messages")
