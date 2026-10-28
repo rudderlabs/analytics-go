@@ -49,5 +49,6 @@ jobs:
         uses: rudderlabs/github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4
         with:
           token: ${{ steps.token.outputs.token }}
-          # PR candidates run without live pipeline credentials.
-          suite: ${{ github.event_name == 'pull_request' && 'reliability' || inputs.suite || vars.SDK_E2E_SUITE || 'reliability' }}
+          # PR candidates use local delivery; the release source candidate always runs full.
+          # This validates repository source, not the module served by the Go proxy.
+          suite: ${{ github.event_name == 'pull_request' && 'reliability' || github.event_name == 'release' && 'full' || inputs.suite || vars.SDK_E2E_SUITE || 'reliability' }}
