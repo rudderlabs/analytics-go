@@ -1,0 +1,54 @@
+name: Published Go SDK E2E
+
+on:
+  release:
+    types: [published]
+  # Retry validation at an existing release tag. This workflow cannot publish.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Do not cancel live validation; the central workflow owns locking and cleanup.
+jobs:
+  validate:
+    if: github.event_name != 'release' || !github.event.release.prerelease
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25
+        with:
+          egress-policy: audit
+      - name: Require an exact release tag
+        env:
+          PACKAGE_VERSION: ${{ github.event.release.tag_name || github.ref_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != release && "$GITHUB_EVENT_NAME" != workflow_dispatch ]]; then
+            echo 'Published validation only accepts release events or manual retries.' >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_TYPE" != tag ]] ||
+             [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ||
+             [[ "${PACKAGE_VERSION#v}" != "${RELEASE_TAG#v}" ]]; then
+            echo 'Select the existing stable release tag that matches the exact package version.' >&2
+            exit 1
+          fi
+      - name: Create a central validation token
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          owner: rudderlabs
+          repositories: rudder-sdk-e2e-tests
+          permission-actions: write
+      - name: Validate the exact public package, delivery, and cleanup
+        # SDK-5962. Merge only after the shared action and central published mode are reviewed.
+        uses: rudderlabs/github-action-sdk-e2e@855d3e174e917aab71b93a862c7e74592904d10e
+        with:
+          token: ${{ steps.token.outputs.token }}
+          package-version: ${{ github.event.release.tag_name || github.ref_name }}
+          suite: full
