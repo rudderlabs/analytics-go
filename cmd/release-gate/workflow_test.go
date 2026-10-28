@@ -101,6 +101,26 @@ func TestGateCommandsHavePinnedGo(t *testing.T) {
 	}
 }
 
+func TestPRGateUsesEventMergeSHA(t *testing.T) {
+	jobs := field(t, workflow(t, "../../.github/workflows/server-sdk-e2e.yml"), "jobs")
+	for _, name := range []string{"select-pr", "validate", "go-sdk-candidate-gate"} {
+		job := field(t, jobs, name)
+		checkout := false
+		for _, item := range job["steps"].([]any) {
+			step := item.(map[any]any)
+			if strings.HasPrefix(asString(step["uses"]), "actions/checkout@") {
+				if field(t, step, "with")["ref"] != "${{ github.sha }}" {
+					t.Fatalf("%s must check out the event merge SHA containing the gate", name)
+				}
+				checkout = true
+			}
+		}
+		if !checkout {
+			t.Fatalf("%s does not check out gate code", name)
+		}
+	}
+}
+
 func TestManualValidationCannotPublish(t *testing.T) {
 	w := workflow(t, "../../.github/workflows/server-sdk-e2e.yml")
 	jobs := field(t, w, "jobs")
