@@ -30,6 +30,9 @@ func TestPublishedWorkflowExactVersionAndRetryIsolation(t *testing.T) {
 	if len(parts) != 2 {
 		t.Fatal("missing validation-only retry job")
 	}
+	if !strings.Contains(parts[0], "\n  validate:\n") || !strings.Contains(parts[0], "runs-on: ubuntu-latest") {
+		t.Fatal("release validation must use ubuntu-latest")
+	}
 	retry := strings.SplitN(parts[1], "\n  notify:", 2)
 	if len(retry) != 2 {
 		t.Fatal("missing release notification job")

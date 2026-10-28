@@ -26,7 +26,7 @@ concurrency:
 jobs:
   validate:
     if: github.event_name == 'release' && !github.event.release.prerelease
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 55
     outputs:
       central_run_url: ${{ steps.e2e.outputs.run-url }}
