@@ -4,8 +4,8 @@ on:
       - "master"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.sha }}
-  cancel-in-progress: true
+  group: go-release-${{ github.ref }}
+  cancel-in-progress: false
 
 name: release-please
 
@@ -14,16 +14,14 @@ permissions:
 
 jobs:
   release-please:
-    permissions:
-      contents: read
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-
-      - name: Generate GitHub App Token
+      - name: Generate PR-only GitHub App token
         id: generate-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -31,10 +29,123 @@ jobs:
           private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
-
+          permission-issues: write
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ steps.generate-token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           target-branch: master
+          skip-github-release: true
+
+  select-release:
+    # Do not enable before PR #91's exact registry E2E and gated notification are deployed.
+    if: vars.GO_RELEASE_GATE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.candidate.outputs.release }}
+      sha: ${{ steps.candidate.outputs.sha }}
+      version: ${{ steps.candidate.outputs.version }}
+      tag: ${{ steps.candidate.outputs.tag }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Identify merged release candidate
+        id: candidate
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go run ./cmd/release-gate select-release
+
+  validate-release:
+    needs: select-release
+    if: needs.select-release.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Recheck master and release identity before full E2E
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.select-release.outputs.sha }}
+          RELEASE_VERSION: ${{ needs.select-release.outputs.version }}
+          RELEASE_TAG: ${{ needs.select-release.outputs.tag }}
+        run: go run ./cmd/release-gate verify-release
+      - name: Full candidate E2E token
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          owner: rudderlabs
+          repositories: rudder-sdk-e2e-tests
+          permission-actions: write
+      - name: Verify delivery and restoration for exact candidate
+        uses: rudderlabs/github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4
+        with:
+          token: ${{ steps.token.outputs.token }}
+          suite: full
+
+  publish-release:
+    needs: [select-release, validate-release]
+    if: needs.select-release.outputs.release == 'true' && needs.select-release.result == 'success' && needs.validate-release.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Recheck identity and master freshness after full validation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.select-release.outputs.sha }}
+          RELEASE_VERSION: ${{ needs.select-release.outputs.version }}
+          RELEASE_TAG: ${{ needs.select-release.outputs.tag }}
+        run: go run ./cmd/release-gate verify-release
+      - name: Create tag and release with a publication-only token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: token
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          permission-contents: write
+      - name: Tag validated commit and publish reviewed release notes
+        env:
+          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
+          RELEASE_SHA: ${{ needs.select-release.outputs.sha }}
+          RELEASE_VERSION: ${{ needs.select-release.outputs.version }}
+          RELEASE_TAG: ${{ needs.select-release.outputs.tag }}
+        run: go run ./cmd/release-gate publish

@@ -3,11 +3,16 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "monthly"
-    open-pull-requests-limit: 0
+      interval: "weekly"
     cooldown:
       default-days: 7
+      exclude:
+        - "rudderlabs/*"
     groups:
+      actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
       actions:
         applies-to: version-updates
         patterns:
@@ -16,11 +21,16 @@ updates:
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
-      interval: "monthly"
-    open-pull-requests-limit: 0
+      interval: "weekly"
     cooldown:
       default-days: 7
+      exclude:
+        - "github.com/rudderlabs/*"
     groups:
+      go-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
       go-deps:
         applies-to: version-updates
         patterns:

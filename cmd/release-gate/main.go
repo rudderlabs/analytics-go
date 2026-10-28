@@ -1,0 +1,491 @@
+// Command release-gate selects and verifies immutable Go release candidates.
+// It makes no central E2E requests; the pinned candidate action owns validation.
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"net/http"
+	"os"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+)
+
+const repository = "rudderlabs/analytics-go"
+
+var (
+	errNotFound    = errors.New("GitHub resource not found")
+	shaPattern     = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	versionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+)
+
+type githubAPI struct {
+	url, token string
+	client     *http.Client
+}
+
+func (a githubAPI) get(path string, result any) error {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, a.url+path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+a.token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	res, err := a.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode == http.StatusNotFound {
+		return errNotFound
+	}
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("GitHub GET %s: status %d", path, res.StatusCode)
+	}
+	return json.NewDecoder(res.Body).Decode(result)
+}
+
+func (a githubAPI) post(path string, body any, result any) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, a.url+path, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+a.token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Content-Type", "application/json")
+	res, err := a.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusCreated {
+		return fmt.Errorf("GitHub POST %s: status %d", path, res.StatusCode)
+	}
+	return json.NewDecoder(res.Body).Decode(result)
+}
+
+type prEvent struct {
+	Number      int `json:"number"`
+	PullRequest struct {
+		Number int `json:"number"`
+		Base   struct {
+			SHA  string `json:"sha"`
+			Repo struct {
+				FullName string `json:"full_name"`
+			} `json:"repo"`
+		} `json:"base"`
+		Head struct {
+			SHA  string `json:"sha"`
+			Repo struct {
+				FullName string `json:"full_name"`
+			} `json:"repo"`
+		} `json:"head"`
+		User struct {
+			Login string `json:"login"`
+		} `json:"user"`
+	} `json:"pull_request"`
+}
+
+type pull struct {
+	Number         int     `json:"number"`
+	State          string  `json:"state"`
+	Merged         bool    `json:"merged"`
+	MergeCommitSHA string  `json:"merge_commit_sha"`
+	Base           prRef   `json:"base"`
+	Head           prRef   `json:"head"`
+	User           prUser  `json:"user"`
+	Labels         []label `json:"labels"`
+}
+
+type prRef struct {
+	Ref  string `json:"ref"`
+	SHA  string `json:"sha"`
+	Repo struct {
+		FullName string `json:"full_name"`
+	} `json:"repo"`
+}
+type prUser struct {
+	Login string `json:"login"`
+}
+type label struct {
+	Name string `json:"name"`
+}
+
+type candidate struct {
+	SHA, Version, Tag string
+}
+
+func prClass(p pull) (excluded bool, err error) {
+	if p.Base.Repo.FullName != repository || p.Base.Ref != "master" || p.State != "open" || p.Number < 1 {
+		return false, errors.New("unsupported PR base or state")
+	}
+	// GitHub withholds App credentials for fork and Dependabot PRs. Author
+	// names other than Dependabot have no bearing on eligibility.
+	if p.Head.Repo.FullName == "" || !shaPattern.MatchString(p.Head.SHA) || !shaPattern.MatchString(p.Base.SHA) {
+		return false, errors.New("unsupported PR candidate")
+	}
+	return p.Head.Repo.FullName != repository || p.User.Login == "dependabot[bot]", nil
+}
+
+func (a githubAPI) mergeSHA(number int) (string, error) {
+	var ref struct {
+		Object struct {
+			SHA string `json:"sha"`
+		} `json:"object"`
+	}
+	err := a.get(fmt.Sprintf("/repos/%s/git/ref/pull/%d/merge", repository, number), &ref)
+	if err != nil {
+		return "", err
+	}
+	if !shaPattern.MatchString(ref.Object.SHA) {
+		return "", errors.New("unsupported merge ref")
+	}
+	return ref.Object.SHA, nil
+}
+
+func (a githubAPI) currentPR(number int, eventSHA string) (pull, bool, error) {
+	var p pull
+	if err := a.get(fmt.Sprintf("/repos/%s/pulls/%d", repository, number), &p); err != nil {
+		return p, false, err
+	}
+	if p.Number != number {
+		return p, false, errors.New("PR number changed")
+	}
+	excluded, err := prClass(p)
+	if err != nil {
+		return p, false, err
+	}
+	sha, err := a.mergeSHA(number)
+	if err != nil {
+		return p, false, err
+	}
+	if !shaPattern.MatchString(eventSHA) || sha != eventSHA {
+		return p, false, errors.New("stale PR merge SHA")
+	}
+	return p, excluded, nil
+}
+
+func (a githubAPI) masterSHA() (string, error) {
+	var branch struct {
+		Commit struct {
+			SHA string `json:"sha"`
+		} `json:"commit"`
+	}
+	err := a.get("/repos/"+repository+"/branches/master", &branch)
+	if err != nil {
+		return "", err
+	}
+	if !shaPattern.MatchString(branch.Commit.SHA) {
+		return "", errors.New("invalid master SHA")
+	}
+	return branch.Commit.SHA, nil
+}
+
+func (a githubAPI) file(sha, path string) (string, error) {
+	var blob struct {
+		Content  string `json:"content"`
+		Encoding string `json:"encoding"`
+		SHA      string `json:"sha"`
+	}
+	if err := a.get("/repos/"+repository+"/contents/"+path+"?ref="+sha, &blob); err != nil {
+		return "", err
+	}
+	if blob.Encoding != "base64" || !shaPattern.MatchString(blob.SHA) {
+		return "", errors.New("invalid release file response")
+	}
+	content, err := base64.StdEncoding.DecodeString(blob.Content)
+	if err != nil {
+		return "", err
+	}
+	if len(content) > 1<<20 {
+		return "", errors.New("release file too large")
+	}
+	return string(content), nil
+}
+
+func sdkVersion(source string) (string, error) {
+	file, err := parser.ParseFile(token.NewFileSet(), "analytics.go", source, 0)
+	if err != nil {
+		return "", err
+	}
+	if file.Name.Name != "analytics" {
+		return "", errors.New("wrong SDK package")
+	}
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			value := spec.(*ast.ValueSpec)
+			for i, name := range value.Names {
+				if name.Name != "Version" {
+					continue
+				}
+				if i >= len(value.Values) {
+					return "", errors.New("SDK version must be an explicit string literal")
+				}
+				literal, ok := value.Values[i].(*ast.BasicLit)
+				if !ok || literal.Kind != token.STRING {
+					return "", errors.New("SDK version must be a string literal")
+				}
+				return strconv.Unquote(literal.Value)
+			}
+		}
+	}
+	return "", errors.New("SDK version constant missing")
+}
+
+func releaseFiles(module, manifest, sdk, changelog string) (string, string, error) {
+	if !strings.HasPrefix(module, "module github.com/rudderlabs/analytics-go/v4\n") {
+		return "", "", errors.New("wrong Go module path")
+	}
+	var versions map[string]string
+	if err := json.Unmarshal([]byte(manifest), &versions); err != nil {
+		return "", "", err
+	}
+	v := versions["."]
+	if len(versions) != 1 || !versionPattern.MatchString(v) || !strings.HasPrefix(v, "4.") {
+		return "", "", errors.New("unsupported release manifest")
+	}
+	actual, err := sdkVersion(sdk)
+	if err != nil || actual != v {
+		return "", "", errors.New("SDK version mismatch")
+	}
+	tag := "v" + v
+	start := "## [" + v + "]("
+	index := strings.Index(changelog, start)
+	if index == -1 || strings.Index(changelog[:index], "\n## [") != -1 {
+		return "", "", errors.New("release not at top of changelog")
+	}
+	end := strings.Index(changelog[index+len(start):], "\n## [")
+	notes := changelog[index:]
+	if end >= 0 {
+		notes = changelog[index : index+len(start)+end]
+	}
+	if !strings.Contains(strings.SplitN(changelog[index:], "\n", 2)[0], tag+")") {
+		return "", "", errors.New("changelog tag mismatch")
+	}
+	return v, notes, nil
+}
+
+// ErrNoReleaseCandidate means the pushed commit has no release PR. A claimed
+// release that fails file, identity, or tag verification must still fail closed.
+var ErrNoReleaseCandidate = errors.New("no merged release PR with autorelease: pending label")
+
+func (a githubAPI) releaseCandidate(sha string) (candidate, string, error) {
+	var c candidate
+	if !shaPattern.MatchString(sha) {
+		return c, "", errors.New("invalid source SHA")
+	}
+	master, err := a.masterSHA()
+	if err != nil {
+		return c, "", err
+	}
+	if master != sha {
+		return c, "", errors.New("master advanced during validation")
+	}
+	var prs []pull
+	if err := a.get("/repos/"+repository+"/commits/"+sha+"/pulls", &prs); err != nil {
+		return c, "", err
+	}
+	var releasePR pull
+	for _, p := range prs {
+		if p.Merged && p.MergeCommitSHA == sha && hasReleaseLabel(p.Labels) {
+			if !isReleasePR(p) || releasePR.Number != 0 {
+				return c, "", errors.New("invalid or ambiguous merged release PR")
+			}
+			releasePR = p
+		}
+	}
+	if releasePR.Number == 0 {
+		return c, "", ErrNoReleaseCandidate
+	}
+	var verified pull
+	if err := a.get(fmt.Sprintf("/repos/%s/pulls/%d", repository, releasePR.Number), &verified); err != nil {
+		return c, "", err
+	}
+	if verified.Number != releasePR.Number || !verified.Merged || verified.MergeCommitSHA != sha ||
+		!hasReleaseLabel(verified.Labels) || !isReleasePR(verified) {
+		return c, "", errors.New("release PR identity changed")
+	}
+	files := make([]string, 4)
+	for i, path := range []string{"go.mod", ".release-please-manifest.json", "analytics.go", "CHANGELOG.md"} {
+		files[i], err = a.file(sha, path)
+		if err != nil {
+			return c, "", err
+		}
+	}
+	v, notes, err := releaseFiles(files[0], files[1], files[2], files[3])
+	if err != nil {
+		return c, "", err
+	}
+	c = candidate{sha, v, "v" + v}
+	var tag struct {
+		Ref string `json:"ref"`
+	}
+	err = a.get("/repos/"+repository+"/git/ref/tags/"+c.Tag, &tag)
+	if err == nil {
+		return c, "", errors.New("tag already exists")
+	}
+	if !errors.Is(err, errNotFound) {
+		return c, "", err
+	}
+	return c, notes, nil
+}
+
+func isReleasePR(p pull) bool {
+	return p.Base.Ref == "master" && p.Base.Repo.FullName == repository && p.Head.Repo.FullName == repository
+}
+
+func hasReleaseLabel(labels []label) bool {
+	for _, l := range labels {
+		if l.Name == "autorelease: pending" {
+			return true
+		}
+	}
+	return false
+}
+
+func (a githubAPI) publish(c candidate) error {
+	verified, notes, err := a.releaseCandidate(c.SHA)
+	if err != nil {
+		return err
+	}
+	if verified != c {
+		return errors.New("candidate identity changed")
+	}
+	// Tag creation is the Go module publication boundary. Never retry or move an
+	// existing tag if GitHub Release creation fails; recover it manually.
+	var ref any
+	if err := a.post("/repos/"+repository+"/git/refs", map[string]string{"ref": "refs/tags/" + c.Tag, "sha": c.SHA}, &ref); err != nil {
+		return err
+	}
+	var release any
+	return a.post("/repos/"+repository+"/releases", map[string]any{"tag_name": c.Tag, "target_commitish": c.SHA, "name": c.Tag, "body": notes, "draft": false, "prerelease": false}, &release)
+}
+
+func output(key, value string) error {
+	f, err := os.OpenFile(os.Getenv("GITHUB_OUTPUT"), os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = fmt.Fprintf(f, "%s=%s\n", key, value)
+	return err
+}
+
+func run(args []string, a githubAPI, env func(string) string) error {
+	if len(args) != 1 {
+		return errors.New("expected one command")
+	}
+	switch args[0] {
+	case "pr-select", "pr-check", "pr-gate":
+		data, err := os.ReadFile(env("GITHUB_EVENT_PATH"))
+		if err != nil {
+			return err
+		}
+		var event prEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			return err
+		}
+		if event.Number != event.PullRequest.Number || event.Number < 1 || env("GITHUB_REPOSITORY") != repository {
+			return errors.New("invalid PR event")
+		}
+		p, excluded, err := a.currentPR(event.Number, env("GITHUB_SHA"))
+		if err != nil {
+			return err
+		}
+		if p.Head.SHA != event.PullRequest.Head.SHA || p.Base.SHA != event.PullRequest.Base.SHA ||
+			p.Head.Repo.FullName != event.PullRequest.Head.Repo.FullName || p.Base.Repo.FullName != event.PullRequest.Base.Repo.FullName ||
+			p.User.Login != event.PullRequest.User.Login {
+			return errors.New("PR identity, head or base changed")
+		}
+		if args[0] == "pr-select" {
+			if err := output("eligible", fmt.Sprint(!excluded)); err != nil {
+				return err
+			}
+			return output("excluded", fmt.Sprint(excluded))
+		}
+		if args[0] == "pr-check" {
+			if excluded {
+				return errors.New("excluded PR cannot request a central run")
+			}
+			return nil
+		}
+		if env("SELECT_RESULT") != "success" {
+			return errors.New("PR selection failed or skipped")
+		}
+		if excluded && env("EXCLUDED") == "true" && env("VALIDATE_RESULT") == "skipped" {
+			return nil
+		}
+		if !excluded && env("ELIGIBLE") == "true" && env("VALIDATE_RESULT") == "success" {
+			return nil
+		}
+		return errors.New("candidate validation failed, cancelled or skipped unexpectedly")
+	case "select-release", "verify-release", "publish":
+		if env("GITHUB_REPOSITORY") != repository || env("GITHUB_REF") != "refs/heads/master" {
+			return errors.New("not a master release event")
+		}
+		sha := env("GITHUB_SHA")
+		if args[0] != "select-release" {
+			sha = env("RELEASE_SHA")
+		}
+		if args[0] == "publish" {
+			if sha != env("GITHUB_SHA") {
+				return errors.New("publication source differs from triggering commit")
+			}
+			return a.publish(candidate{sha, env("RELEASE_VERSION"), env("RELEASE_TAG")})
+		}
+		c, _, err := a.releaseCandidate(sha)
+		if args[0] == "select-release" && errors.Is(err, ErrNoReleaseCandidate) {
+			return output("release", "false")
+		}
+		if err != nil {
+			return err
+		}
+		if args[0] == "select-release" {
+			if err := output("release", "true"); err != nil {
+				return err
+			}
+			if err := output("sha", c.SHA); err != nil {
+				return err
+			}
+			if err := output("version", c.Version); err != nil {
+				return err
+			}
+			return output("tag", c.Tag)
+		}
+		if sha != env("GITHUB_SHA") || c != (candidate{sha, env("RELEASE_VERSION"), env("RELEASE_TAG")}) {
+			return errors.New("release candidate changed")
+		}
+		return nil
+	default:
+		return errors.New("unknown release-gate command")
+	}
+}
+
+func main() {
+	url := os.Getenv("GITHUB_API_URL")
+	if url == "" {
+		url = "https://api.github.com"
+	}
+	a := githubAPI{url: url, token: os.Getenv("GITHUB_TOKEN"), client: &http.Client{Timeout: 15 * time.Second}}
+	if err := run(os.Args[1:], a, os.Getenv); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}

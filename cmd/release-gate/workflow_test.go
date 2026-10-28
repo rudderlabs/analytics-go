@@ -1,0 +1,123 @@
+package main
+
+import (
+	"os"
+	"strings"
+	"testing"
+
+	"gopkg.in/yaml.v2"
+)
+
+func workflow(t *testing.T, file string) map[any]any {
+	t.Helper()
+	data, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var result map[any]any
+	if err := yaml.UnmarshalStrict(data, &result); err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func field(t *testing.T, obj map[any]any, key string) map[any]any {
+	t.Helper()
+	value, ok := obj[key].(map[any]any)
+	if !ok {
+		t.Fatalf("missing %s in %+v", key, obj)
+	}
+	return value
+}
+
+func TestPublicationDependencyGraph(t *testing.T) {
+	w := workflow(t, "../../.github/workflows/release-please.yaml")
+	jobs := field(t, w, "jobs")
+	pr := field(t, jobs, "release-please")
+	if pr["needs"] != nil {
+		t.Fatal("PR generation depends on validation")
+	}
+	steps := pr["steps"].([]any)
+	if field(t, steps[len(steps)-1].(map[any]any), "with")["skip-github-release"] != true {
+		t.Fatal("Release Please must never create tags")
+	}
+	selectJob := field(t, jobs, "select-release")
+	if selectJob["if"] == nil || !strings.Contains(selectJob["if"].(string), "GO_RELEASE_GATE_ENABLED") {
+		t.Fatal("publisher not opt-in")
+	}
+	full := field(t, jobs, "validate-release")
+	if full["needs"] != "select-release" || !strings.Contains(asString(full["if"]), "needs.select-release.outputs.release == 'true'") {
+		t.Fatal("full suite must only run for a selected release")
+	}
+	publisher := field(t, jobs, "publish-release")
+	deps := publisher["needs"].([]any)
+	if len(deps) != 2 || deps[0] != "select-release" || deps[1] != "validate-release" {
+		t.Fatal("publisher does not depend on full check")
+	}
+	if !strings.Contains(publisher["if"].(string), "needs.validate-release.result == 'success'") ||
+		!strings.Contains(publisher["if"].(string), "needs.select-release.outputs.release == 'true'") {
+		t.Fatal("non-release or skipped/failed validation can publish")
+	}
+	var fullAction, publisherWrites, validatorWrites bool
+	for _, raw := range full["steps"].([]any) {
+		step := raw.(map[any]any)
+		if strings.Contains(asString(step["uses"]), "github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4") && field(t, step, "with")["suite"] == "full" {
+			fullAction = true
+		}
+		if strings.Contains(asString(step["run"]), "publish") {
+			validatorWrites = true
+		}
+	}
+	for _, raw := range publisher["steps"].([]any) {
+		step := raw.(map[any]any)
+		if strings.Contains(asString(step["run"]), "release-gate publish") {
+			publisherWrites = true
+		}
+	}
+	if !fullAction || validatorWrites || !publisherWrites {
+		t.Fatal("full E2E/publisher boundary changed")
+	}
+}
+
+func asString(v any) string { s, _ := v.(string); return s }
+
+func TestGateCommandsHavePinnedGo(t *testing.T) {
+	for _, file := range []string{"../../.github/workflows/release-please.yaml", "../../.github/workflows/server-sdk-e2e.yml"} {
+		jobs := field(t, workflow(t, file), "jobs")
+		for name, raw := range jobs {
+			job := raw.(map[any]any)
+			setup := false
+			for _, item := range job["steps"].([]any) {
+				step := item.(map[any]any)
+				if strings.HasPrefix(asString(step["uses"]), "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e") &&
+					field(t, step, "with")["go-version-file"] == "go.mod" {
+					setup = true
+				}
+				if strings.Contains(asString(step["run"]), "go run ./cmd/release-gate") && !setup {
+					t.Fatalf("%s %s runs gate without pinned Go", file, name)
+				}
+			}
+		}
+	}
+}
+
+func TestManualValidationCannotPublish(t *testing.T) {
+	w := workflow(t, "../../.github/workflows/server-sdk-e2e.yml")
+	jobs := field(t, w, "jobs")
+	gate := field(t, jobs, "go-sdk-candidate-gate")
+	if gate["name"] != "Go SDK candidate gate" || !strings.Contains(gate["if"].(string), "always()") {
+		t.Fatal("aggregate missing")
+	}
+	if !strings.Contains(field(t, jobs, "validate-other")["if"].(string), "workflow_dispatch") {
+		t.Fatal("manual validation missing")
+	}
+	for _, raw := range jobs {
+		job := raw.(map[any]any)
+		for _, item := range job["steps"].([]any) {
+			step := item.(map[any]any)
+			if strings.Contains(asString(step["run"]), "release-gate publish") {
+				t.Fatal("E2E workflow publishes")
+			}
+		}
+	}
+}

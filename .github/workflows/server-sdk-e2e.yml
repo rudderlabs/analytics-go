@@ -3,7 +3,7 @@ name: Server SDK E2E
 on:
   pull_request:
     branches: [master]
-    types: [opened, reopened, synchronize]
+    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft]
   push:
     branches: [master]
   workflow_dispatch:
@@ -16,19 +16,119 @@ on:
   release:
     types: [published]
 
-permissions:
-  contents: read
+permissions: {}
 
-# Independent requests must not cancel earlier merge or release validations.
+concurrency:
+  group: go-candidate-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  select-pr:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      eligible: ${{ steps.select.outputs.eligible }}
+      excluded: ${{ steps.select.outputs.excluded }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Check current PR merge ref and eligibility
+        id: select
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go run ./cmd/release-gate pr-select
+
   validate:
-    # Fork and Dependabot PRs cannot access the release App secret.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.pull_request.head.repo.full_name == github.repository &&
-       github.actor != 'dependabot[bot]' &&
-       github.event.pull_request.user.login != 'dependabot[bot]')
-    runs-on: ubuntu-24.04
+    needs: select-pr
+    if: github.event.pull_request.user.login != 'dependabot[bot]' && needs.select-pr.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Recheck PR merge SHA before dispatch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go run ./cmd/release-gate pr-check
+      - name: Create a central validation token
+        id: token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          owner: rudderlabs
+          repositories: rudder-sdk-e2e-tests
+          permission-actions: write
+      - name: Validate current PR candidate in isolated reliability mode
+        uses: rudderlabs/github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4
+        with:
+          token: ${{ steps.token.outputs.token }}
+          suite: reliability
+      - name: Recheck PR merge SHA after validation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go run ./cmd/release-gate pr-check
+
+  go-sdk-candidate-gate:
+    name: Go SDK candidate gate
+    if: always() && github.event_name == 'pull_request'
+    needs: [select-pr, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Verify result and current merge SHA
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          SELECT_RESULT: ${{ needs.select-pr.result }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+          ELIGIBLE: ${{ needs.select-pr.outputs.eligible }}
+          EXCLUDED: ${{ needs.select-pr.outputs.excluded }}
+        run: go run ./cmd/release-gate pr-gate
+
+  # Retain manual retries and independent post-publication registry validation.
+  # These never publish; PR #91 owns the published-package acceptance and notification.
+  validate-other:
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'release' || github.event_name == 'push'
+    runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -39,15 +139,13 @@ jobs:
         id: token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          # Match the working release App configuration in release-please.yaml.
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
           owner: rudderlabs
           repositories: rudder-sdk-e2e-tests
           permission-actions: write
-      - name: Detect this repository, dispatch, and wait for its result
+      - name: Validate without publication
         uses: rudderlabs/github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4
         with:
           token: ${{ steps.token.outputs.token }}
-          # PR candidates run without live pipeline credentials.
-          suite: ${{ github.event_name == 'pull_request' && 'reliability' || inputs.suite || vars.SDK_E2E_SUITE || 'reliability' }}
+          suite: ${{ inputs.suite || vars.SDK_E2E_SUITE || 'reliability' }}
