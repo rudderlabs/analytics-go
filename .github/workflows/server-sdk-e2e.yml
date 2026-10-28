@@ -22,8 +22,12 @@ permissions:
 # Independent requests must not cancel earlier merge or release validations.
 jobs:
   validate:
-    # Fork PRs cannot access the dispatch App secret.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # Fork and Dependabot PRs cannot access the release App secret.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.actor != 'dependabot[bot]' &&
+       github.event.pull_request.user.login != 'dependabot[bot]')
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     steps:
@@ -45,4 +49,5 @@ jobs:
         uses: rudderlabs/github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4
         with:
           token: ${{ steps.token.outputs.token }}
-          suite: ${{ inputs.suite || vars.SDK_E2E_SUITE || 'reliability' }}
+          # PR candidates run without live pipeline credentials.
+          suite: ${{ github.event_name == 'pull_request' && 'reliability' || inputs.suite || vars.SDK_E2E_SUITE || 'reliability' }}
