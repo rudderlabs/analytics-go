@@ -42,7 +42,7 @@ jobs:
           repositories: rudder-sdk-e2e-tests
           permission-actions: write
       - name: Detect this repository, dispatch, and wait for its result
-        uses: rudderlabs/github-action-sdk-e2e@cfb61420aa6b54c914028d24c46693015c9b78dc
+        uses: rudderlabs/github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4
         with:
           token: ${{ steps.token.outputs.token }}
           suite: ${{ inputs.suite || vars.SDK_E2E_SUITE || 'reliability' }}
