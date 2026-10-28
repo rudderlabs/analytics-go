@@ -162,6 +162,8 @@ jobs:
           PY
       - name: Post release acceptance root
         id: root
+        env:
+          SLACK_RELEASE_CHANNEL_ID: ${{ secrets.SLACK_RELEASE_CHANNEL_ID }}
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -170,12 +172,14 @@ jobs:
           retries: rapid
           payload: |
             {
-              "channel": ${{ toJSON(secrets.SLACK_RELEASE_CHANNEL_ID) }},
+              "channel": ${{ toJSON(env.SLACK_RELEASE_CHANNEL_ID) }},
               "text": ${{ steps.message.outputs.root_json }},
               "unfurl_links": false,
               "unfurl_media": false
             }
       - name: Post links and check results in the release thread
+        env:
+          SLACK_RELEASE_CHANNEL_ID: ${{ secrets.SLACK_RELEASE_CHANNEL_ID }}
         uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
         with:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
@@ -184,7 +188,7 @@ jobs:
           retries: rapid
           payload: |
             {
-              "channel": ${{ toJSON(secrets.SLACK_RELEASE_CHANNEL_ID) }},
+              "channel": ${{ toJSON(env.SLACK_RELEASE_CHANNEL_ID) }},
               "thread_ts": ${{ toJSON(steps.root.outputs.ts) }},
               "text": ${{ steps.message.outputs.detail_json }},
               "reply_broadcast": false,
