@@ -4,57 +4,110 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 )
 
-func TestSlackNotificationPayload(t *testing.T) {
-	workflow, err := os.ReadFile(".github/workflows/slack-notify.yml")
-	if err != nil {
-		t.Fatalf("read Slack notification workflow: %v", err)
+func TestReleaseNotificationFollowsAcceptance(t *testing.T) {
+	if _, err := os.Stat(".github/workflows/slack-notify.yml"); !os.IsNotExist(err) {
+		t.Fatalf("independent early release notification still exists: %v", err)
 	}
+	workflow, err := os.ReadFile(".github/workflows/published-sdk-e2e.yml")
+	if err != nil {
+		t.Fatalf("read published acceptance workflow: %v", err)
+	}
+	text := string(workflow)
+	start := strings.Index(text, "\n  notify:")
+	if start < 0 {
+		t.Fatal("missing notification job")
+	}
+	notify := text[start:]
+	for _, required := range []string{
+		"if: always() && github.event_name == 'release'",
+		"needs: validate",
+		"VALIDATION_RESULT: ${{ needs.validate.result }}",
+		"\"thread_ts\": ",
+		"\"reply_broadcast\": false",
+		"\"unfurl_links\": false",
+		"\"unfurl_media\": false",
+		"slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d",
+		"secrets.SLACK_RELEASE_CHANNEL_ID",
+		"secrets.SLACK_BOT_TOKEN",
+	} {
+		if !strings.Contains(notify, required) {
+			t.Errorf("notification job is missing %q", required)
+		}
+	}
+	if strings.Contains(notify, "continue-on-error:") {
+		t.Fatal("Slack delivery errors must remain visible")
+	}
+	if strings.Index(notify, "id: root") > strings.Index(notify, "\"thread_ts\":") {
+		t.Fatal("thread reply precedes its root message")
+	}
+}
 
-	payload, err := yamlLiteralBlock(string(workflow), "payload: |")
+func TestReleaseNotificationContent(t *testing.T) {
+	workflow, err := os.ReadFile(".github/workflows/published-sdk-e2e.yml")
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	var message struct {
-		Blocks []map[string]json.RawMessage `json:"blocks"`
+	notify := strings.SplitN(string(workflow), "- name: Prepare short root and detailed thread reply", 2)
+	if len(notify) != 2 {
+		t.Fatal("missing message preparation step")
 	}
-	if err := json.Unmarshal([]byte(payload), &message); err != nil {
-		t.Fatalf("parse Slack notification payload: %v", err)
+	script, err := yamlLiteralBlock(notify[1], "run: |")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len(message.Blocks) == 0 {
-		t.Fatal("Slack notification payload has no blocks")
-	}
-
-	sectionHasAccessory := false
-	for i, block := range message.Blocks {
-		rawType, ok := block["type"]
-		if !ok {
-			t.Fatalf("Slack notification block %d has no type", i)
-		}
-
-		var blockType string
-		if err := json.Unmarshal(rawType, &blockType); err != nil || blockType == "" {
-			t.Fatalf("Slack notification block %d has an invalid type", i)
-		}
-
-		if blockType == "section" {
-			_, sectionHasAccessory = block["accessory"]
-		}
-	}
-	if !sectionHasAccessory {
-		t.Fatal("Slack notification section has no accessory")
-	}
-
-	workflowText := string(workflow)
-	if !strings.Contains(workflowText, "continue-on-error: true") {
-		t.Fatal("Slack notification step must not fail the release workflow")
-	}
-	if !strings.Contains(workflowText, "errors: true") {
-		t.Fatal("Slack notification step must report Slack API errors")
+	for _, tc := range []struct {
+		name, result, status, checks string
+	}{
+		{"success", "success", "published; validation passed", "passed"},
+		{"failure", "failure", "published; validation failed or incomplete", "failed or incomplete"},
+		{"skipped", "skipped", "published; validation failed or incomplete", "failed or incomplete"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output := t.TempDir() + "/output"
+			cmd := exec.Command("bash", "-c", script)
+			cmd.Env = append(os.Environ(),
+				"RELEASE_TAG=v4.5.6", "RELEASE_DATE=2026-10-28T12:00:00Z",
+				"VALIDATION_RESULT="+tc.result,
+				"RELEASE_URL=https://github.com/rudderlabs/analytics-go/releases/tag/v4.5.6",
+				"WORKFLOW_URL=https://github.com/rudderlabs/analytics-go/actions/runs/123",
+				"CENTRAL_RUN_URL=https://github.com/rudderlabs/rudder-sdk-e2e-tests/actions/runs/456",
+				"GITHUB_OUTPUT="+output)
+			if result, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("render notification: %v: %s", err, result)
+			}
+			data, err := os.ReadFile(output)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fields := map[string]string{}
+			for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+				key, value, ok := strings.Cut(line, "=")
+				if !ok {
+					t.Fatalf("invalid output %q", line)
+				}
+				var decoded string
+				if err := json.Unmarshal([]byte(value), &decoded); err != nil {
+					t.Fatalf("invalid JSON output: %v", err)
+				}
+				fields[key] = decoded
+			}
+			root, detail := fields["root_json"], fields["detail_json"]
+			if !strings.Contains(root, "Go SDK v4.5.6 | 2026-10-28 | "+tc.status) {
+				t.Fatalf("wrong root: %q", root)
+			}
+			if strings.Contains(root, "https://") || strings.Contains(root, "Go proxy") {
+				t.Fatalf("root contains thread detail: %q", root)
+			}
+			if !strings.Contains(detail, "Go proxy, delivery, and cleanup: "+tc.checks) ||
+				!strings.Contains(detail, "Central E2E run") {
+				t.Fatalf("missing thread check results: %q", detail)
+			}
+		})
 	}
 }
 
