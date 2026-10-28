@@ -136,16 +136,21 @@ jobs:
           import os
           import re
 
-          tag = html.escape(os.environ['RELEASE_TAG'][:80], quote=False).replace('\n', ' ')
+          release_tag = os.environ['RELEASE_TAG']
+          tag = html.escape(release_tag[:80], quote=False).replace('\n', ' ')
           date = os.environ['RELEASE_DATE'][:10]
           success = os.environ['VALIDATION_RESULT'] == 'success'
           status = 'published; validation passed' if success else 'published; validation failed or incomplete'
-          # RESOLVE: add the exact Slack mention IDs from the SDK-5538 review comment before merge.
           root = f'Go SDK {tag} | {date} | {status}'
           checks = 'passed' if success else 'failed or incomplete'
           release_url = os.environ['RELEASE_URL']
           workflow_url = os.environ['WORKFLOW_URL']
           detail = f'<{release_url}|Release> | <{workflow_url}|Acceptance run>\nGo proxy, delivery, and cleanup: {checks}'
+          if re.fullmatch(r'v4\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', release_tag):
+              module_url = f'https://proxy.golang.org/github.com/rudderlabs/analytics-go/v4/@v/{release_tag}.info'
+              detail += f'\n<{module_url}|Go module {release_tag}>'
+          else:
+              detail += '\nGo module: unavailable (invalid v4 release tag)'
           central_url = os.environ['CENTRAL_RUN_URL']
           if re.fullmatch(r'https://github\.com/rudderlabs/rudder-sdk-e2e-tests/actions/runs/[0-9]+', central_url):
               detail += f'\n<{central_url}|Central E2E run>'

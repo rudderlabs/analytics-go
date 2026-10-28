@@ -42,6 +42,9 @@ func TestReleaseNotificationFollowsAcceptance(t *testing.T) {
 	if strings.Contains(notify, "continue-on-error:") {
 		t.Fatal("Slack delivery errors must remain visible")
 	}
+	if strings.Contains(notify, "RESOLVE") {
+		t.Fatal("notification still has an unresolved mention placeholder")
+	}
 	if strings.Index(notify, "id: root") > strings.Index(notify, "\"thread_ts\":") {
 		t.Fatal("thread reply precedes its root message")
 	}
@@ -104,7 +107,8 @@ func TestReleaseNotificationContent(t *testing.T) {
 				t.Fatalf("root contains thread detail: %q", root)
 			}
 			if !strings.Contains(detail, "Go proxy, delivery, and cleanup: "+tc.checks) ||
-				!strings.Contains(detail, "Central E2E run") {
+				!strings.Contains(detail, "Central E2E run") ||
+				!strings.Contains(detail, "https://proxy.golang.org/github.com/rudderlabs/analytics-go/v4/@v/v4.5.6.info") {
 				t.Fatalf("missing thread check results: %q", detail)
 			}
 		})
