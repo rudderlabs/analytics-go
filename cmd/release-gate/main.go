@@ -505,7 +505,7 @@ func (a githubAPI) publish(c candidate) error {
 	if err := a.write(http.MethodPost, labels, map[string]any{"labels": []string{"autorelease: tagged"}}, nil, http.StatusOK); err != nil {
 		return err
 	}
-	return a.write(http.MethodDelete, labels+"/autorelease:%20pending", nil, nil, http.StatusNoContent)
+	return a.write(http.MethodDelete, labels+"/autorelease:%20pending", nil, nil, http.StatusOK)
 }
 
 func output(key, value string) error {

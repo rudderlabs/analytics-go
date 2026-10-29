@@ -243,7 +243,7 @@ func TestReleaseCandidateAndPublish(t *testing.T) {
 			return 200, nil
 		case r.Method == "DELETE" && strings.HasSuffix(r.URL.Path, "/labels/autorelease: pending"):
 			p.Labels = []label{{"autorelease: tagged"}}
-			return 204, nil
+			return 200, []map[string]string{{"name": "autorelease: tagged"}}
 		default:
 			t.Errorf("unexpected request %s", r.URL)
 			return 500, nil
