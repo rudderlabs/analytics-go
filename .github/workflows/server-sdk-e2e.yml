@@ -21,6 +21,28 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  release-token-preflight:
+    name: Verify release App token permissions
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Mint and automatically revoke the exact release token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
   select-pr:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

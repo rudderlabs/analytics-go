@@ -38,6 +38,12 @@ func TestPublicationDependencyGraph(t *testing.T) {
 		t.Fatal("PR generation must wait for release selection")
 	}
 	steps := pr["steps"].([]any)
+	for _, raw := range steps {
+		step := raw.(map[any]any)
+		if asString(step["id"]) == "generate-token" {
+			assertReleaseTokenPermissions(t, field(t, step, "with"))
+		}
+	}
 	if field(t, steps[len(steps)-1].(map[any]any), "with")["skip-github-release"] != true {
 		t.Fatal("Release Please must never create tags")
 	}
@@ -77,16 +83,23 @@ func TestPublicationDependencyGraph(t *testing.T) {
 			publisherWrites = true
 		}
 		if asString(step["id"]) == "token" {
-			permissions := field(t, step, "with")
-			for _, name := range []string{"permission-contents", "permission-pull-requests", "permission-issues"} {
-				if permissions[name] == nil {
-					t.Fatalf("publication token missing %s", name)
-				}
-			}
+			assertReleaseTokenPermissions(t, field(t, step, "with"))
 		}
 	}
 	if !fullAction || validatorWrites || !publisherWrites {
 		t.Fatal("full E2E/publisher boundary changed")
+	}
+}
+
+func assertReleaseTokenPermissions(t *testing.T, permissions map[any]any) {
+	t.Helper()
+	for _, name := range []string{"permission-contents", "permission-pull-requests"} {
+		if permissions[name] != "write" {
+			t.Fatalf("release token needs %s: write", name)
+		}
+	}
+	if permissions["permission-issues"] != nil {
+		t.Fatal("the release App does not grant Issues permission; PR write supports label updates")
 	}
 }
 

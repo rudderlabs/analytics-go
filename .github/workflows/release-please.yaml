@@ -34,7 +34,6 @@ jobs:
           private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
-          permission-issues: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -174,8 +173,7 @@ jobs:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
           permission-contents: write
-          permission-pull-requests: read
-          permission-issues: write
+          permission-pull-requests: write
       - name: Tag validated commit and publish reviewed release notes
         env:
           GITHUB_TOKEN: ${{ steps.token.outputs.token }}
