@@ -13,8 +13,6 @@ on:
         type: choice
         options: [reliability, full]
         default: reliability
-  release:
-    types: [published]
 
 permissions:
   contents: read
@@ -28,7 +26,7 @@ jobs:
       (github.event.pull_request.head.repo.full_name == github.repository &&
        github.actor != 'dependabot[bot]' &&
        github.event.pull_request.user.login != 'dependabot[bot]')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -46,7 +44,7 @@ jobs:
           repositories: rudder-sdk-e2e-tests
           permission-actions: write
       - name: Detect this repository, dispatch, and wait for its result
-        uses: rudderlabs/github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4
+        uses: rudderlabs/github-action-sdk-e2e@b6de40cc65abe8ee6c6593aac1787aea746b671f # v1.0.0
         with:
           token: ${{ steps.token.outputs.token }}
           # PR candidates run without live pipeline credentials.

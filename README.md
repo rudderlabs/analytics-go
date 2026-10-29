@@ -29,6 +29,12 @@
 
 The RudderStack Go SDK lets you send customer event data from your Go applications to your specified destinations.
 
+## Releases and validation
+
+Release Please creates the GitHub release and its `v4.x.y` tag after a release PR is merged. For this Go module (`github.com/rudderlabs/analytics-go/v4`), tagging publishes the module; there is no separate npm-style upload. The Go module proxy may take time to serve that exact version after tagging.
+
+The `Server SDK E2E` workflow validates source candidates on trusted PRs and master pushes. PRs run the reliability suite. `Published Go SDK E2E` runs the full suite after a release and installs the exact version from the public Go module proxy. Because Go publication starts with tagging, this is post-publication acceptance, not a pre-tag gate. See [release acceptance and validation-only retry](.github/RELEASE_E2E.md).
+
 ## SDK setup requirements
 
 - Set up a [RudderStack open source](https://app.rudderstack.com/signup?type=opensource) account.
