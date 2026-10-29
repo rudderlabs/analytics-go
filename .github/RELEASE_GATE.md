@@ -27,10 +27,10 @@ module. GitHub Release creation follows with the reviewed changelog notes.
 Only after successful release creation does the publisher add `autorelease: tagged`
 and remove `autorelease: pending`. Pending merged releases block new release PRs.
 
-The publication token needs Contents write, Pull requests read, and Issues write.
-The release-PR token also needs Pull requests write. Both tokens use the existing
-release App and stay scoped to this repository. The central dispatch token has
-Actions write only for `rudder-sdk-e2e-tests`.
+The publication and release-PR tokens need Contents write and Pull requests write.
+Pull requests write authorizes PR label updates; no Issues permission is needed.
+Both tokens use the existing release App and stay scoped to this repository.
+The central dispatch token has Actions write only for `rudder-sdk-e2e-tests`.
 
 If release creation or label completion fails after tagging, recover the existing
 release and labels manually. Do not create or move the tag again. Confirm the
