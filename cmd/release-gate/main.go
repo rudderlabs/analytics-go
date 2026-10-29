@@ -442,9 +442,9 @@ func (a githubAPI) verifyEvidence(c candidate, report, validatedSHA string) erro
 	return nil
 }
 
-// Block new release PR generation while an earlier merged release remains untagged.
+// Block new release PR generation while an earlier merged release remains pending.
 func (a githubAPI) ensureNoPendingRelease() error {
-	for page := 1; page <= 10; page++ {
+	for page := 1; ; page++ {
 		var prs []pull
 		if err := a.get(fmt.Sprintf("/repos/%s/pulls?state=closed&base=master&sort=updated&direction=desc&per_page=100&page=%d", repository, page), &prs); err != nil {
 			return err
@@ -469,7 +469,6 @@ func (a githubAPI) ensureNoPendingRelease() error {
 			return nil
 		}
 	}
-	return errors.New("pending release scan exceeded pagination limit")
 }
 
 func (a githubAPI) publish(c candidate) error {

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -543,5 +544,37 @@ func TestReleaseSelectionPaginatesAssociatedPRs(t *testing.T) {
 	selected, err := a.releasePR(shaA)
 	if err != nil || selected.Number != 42 {
 		t.Fatalf("release on second page: %+v %v", selected, err)
+	}
+}
+
+func TestPendingReleaseScanBeyondOneThousandClosedPRs(t *testing.T) {
+	for _, pending := range []bool{false, true} {
+		t.Run(fmt.Sprintf("pending=%t", pending), func(t *testing.T) {
+			lastPage := 0
+			a, _ := testAPI(t, func(r *http.Request) (int, any) {
+				p := makePR()
+				p.State, p.Merged, p.MergeCommitSHA = "closed", true, shaA
+				p.Labels = []label{{"autorelease: pending"}}
+				if strings.HasSuffix(r.URL.Path, "/pulls/42") {
+					return 200, p
+				}
+				page, err := strconv.Atoi(r.URL.Query().Get("page"))
+				if err != nil || page != lastPage+1 {
+					t.Fatalf("unexpected page %q", r.URL.RawQuery)
+				}
+				lastPage = page
+				if page <= 10 {
+					return 200, make([]pull, 100)
+				}
+				if pending {
+					return 200, []pull{p}
+				}
+				return 200, []pull{}
+			})
+			err := a.ensureNoPendingRelease()
+			if (err != nil) != pending || lastPage != 11 {
+				t.Fatalf("pending=%t lastPage=%d err=%v", pending, lastPage, err)
+			}
+		})
 	}
 }
