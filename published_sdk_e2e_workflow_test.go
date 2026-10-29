@@ -116,7 +116,7 @@ func TestRetryRequiresPublishedReleaseMetadata(t *testing.T) {
 			output := filepath.Join(t.TempDir(), "output")
 			cmd := exec.Command("bash", "-c", script)
 			cmd.Env = append(os.Environ(),
-				"PATH="+dir+":"+os.Getenv("PATH"), "GITHUB_REPOSITORY=rudderlabs/analytics-go",
+				"PATH="+dir+string(os.PathListSeparator)+os.Getenv("PATH"), "GITHUB_REPOSITORY=rudderlabs/analytics-go",
 				"RELEASE_TAG="+tc.tag, "MODULE_VERSION="+tc.version,
 				"GITHUB_REF="+tc.ref, "FAKE_RELEASE_JSON="+tc.metadata,
 				"GITHUB_OUTPUT="+output)
