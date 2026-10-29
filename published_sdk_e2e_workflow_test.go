@@ -38,6 +38,7 @@ func TestPublishedWorkflowExactVersionAndRetryIsolation(t *testing.T) {
 }
 
 func TestReleaseEventTagGuard(t *testing.T) {
+	requireWorkflowTools(t, "bash")
 	data, err := os.ReadFile(".github/workflows/published-sdk-e2e.yml")
 	if err != nil {
 		t.Fatal(err)
@@ -79,9 +80,7 @@ func TestReleaseEventTagGuard(t *testing.T) {
 }
 
 func TestRetryRequiresPublishedReleaseMetadata(t *testing.T) {
-	if _, err := exec.LookPath("jq"); err != nil {
-		t.Skip("jq is required for the workflow's release metadata check")
-	}
+	requireWorkflowTools(t, "bash", "jq")
 	data, err := os.ReadFile(".github/workflows/published-sdk-e2e.yml")
 	if err != nil {
 		t.Fatal(err)

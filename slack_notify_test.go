@@ -26,6 +26,7 @@ func TestReleaseNotificationFollowsAcceptance(t *testing.T) {
 	for _, required := range []string{
 		"if: always() && github.event_name == 'release'",
 		"needs: validate",
+		"github.run_attempt == '1'",
 		"VALIDATION_RESULT: ${{ needs.validate.result }}",
 		"\"thread_ts\": ",
 		"\"reply_broadcast\": false",
@@ -51,6 +52,7 @@ func TestReleaseNotificationFollowsAcceptance(t *testing.T) {
 }
 
 func TestReleaseNotificationContent(t *testing.T) {
+	requireWorkflowTools(t, "bash", "python3")
 	workflow, err := os.ReadFile(".github/workflows/published-sdk-e2e.yml")
 	if err != nil {
 		t.Fatal(err)
@@ -80,6 +82,7 @@ func TestReleaseNotificationContent(t *testing.T) {
 				"WORKFLOW_URL=https://github.com/rudderlabs/analytics-go/actions/runs/123",
 				"CENTRAL_RUN_URL=https://github.com/rudderlabs/rudder-sdk-e2e-tests/actions/runs/456",
 				"GITHUB_OUTPUT="+output)
+			cmd.Env = append(cmd.Env, "GITHUB_STEP_SUMMARY="+t.TempDir()+"/summary")
 			if result, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("render notification: %v: %s", err, result)
 			}
@@ -112,6 +115,15 @@ func TestReleaseNotificationContent(t *testing.T) {
 				t.Fatalf("missing thread check results: %q", detail)
 			}
 		})
+	}
+}
+
+func requireWorkflowTools(t *testing.T, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		if _, err := exec.LookPath(name); err != nil {
+			t.Skipf("%s is required for this workflow script test", name)
+		}
 	}
 }
 

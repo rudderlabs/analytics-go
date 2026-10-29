@@ -51,8 +51,7 @@ jobs:
   validate:
     needs: release-ref
     if: github.event_name == 'release' && !github.event.release.prerelease
-    # SDK-5977. Review and merge shared-action PR #8 before this caller.
-    uses: rudderlabs/github-action-sdk-e2e/.github/workflows/published-sdk-e2e.yml@1f92c84d6836a235604457ca29c02fd1a0d7c874
+    uses: rudderlabs/github-action-sdk-e2e/.github/workflows/published-sdk-e2e.yml@b6de40cc65abe8ee6c6593aac1787aea746b671f # v1.0.0
     with:
       package-version: ${{ needs.release-ref.outputs.version }}
       release-app-id: ${{ vars.RELEASE_APP_ID }}
@@ -92,8 +91,7 @@ jobs:
   retry:
     needs: retry-ref
     if: github.event_name == 'workflow_dispatch'
-    # SDK-5977. Review and merge shared-action PR #8 before this caller.
-    uses: rudderlabs/github-action-sdk-e2e/.github/workflows/published-sdk-e2e.yml@1f92c84d6836a235604457ca29c02fd1a0d7c874
+    uses: rudderlabs/github-action-sdk-e2e/.github/workflows/published-sdk-e2e.yml@b6de40cc65abe8ee6c6593aac1787aea746b671f # v1.0.0
     with:
       package-version: ${{ needs.retry-ref.outputs.version }}
       release-app-id: ${{ vars.RELEASE_APP_ID }}
@@ -101,7 +99,7 @@ jobs:
       RELEASE_PRIVATE_KEY: ${{ secrets.RELEASE_PRIVATE_KEY }}
 
   notify:
-    if: always() && github.event_name == 'release' && !github.event.release.prerelease
+    if: always() && github.event_name == 'release' && !github.event.release.prerelease && github.run_attempt == '1'
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -148,6 +146,8 @@ jobs:
               detail += f'\n<{central_url}|Central E2E run>'
           else:
               detail += '\nCentral E2E run: unavailable'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write(root + '\n\n' + detail + '\n')
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
               output.write('root_json=' + json.dumps(root) + '\n')
               output.write('detail_json=' + json.dumps(detail) + '\n')
