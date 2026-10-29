@@ -578,3 +578,67 @@ func TestPendingReleaseScanBeyondOneThousandClosedPRs(t *testing.T) {
 		})
 	}
 }
+
+func TestAdvancedMasterRequiresAReplacementReleaseCandidate(t *testing.T) {
+	original := makePR()
+	original.State, original.Merged, original.MergeCommitSHA = "closed", true, shaA
+	original.Labels = []label{{"autorelease: pending"}}
+	replacement := original
+	replacement.Number, replacement.MergeCommitSHA = 43, shaB
+	replaced := false
+	a, requests := testAPI(t, func(r *http.Request) (int, any) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/branches/master"):
+			return 200, map[string]any{"commit": map[string]string{"sha": shaB}}
+		case strings.HasSuffix(r.URL.Path, "/commits/"+shaB+"/pulls"):
+			if replaced {
+				return 200, []pull{replacement}
+			}
+			return 200, []pull{}
+		case strings.HasSuffix(r.URL.Path, "/pulls/42"):
+			return 200, original
+		case strings.HasSuffix(r.URL.Path, "/pulls/43"):
+			return 200, replacement
+		case strings.HasSuffix(r.URL.Path, "/pulls"):
+			if replaced {
+				return 200, []pull{original, replacement}
+			}
+			return 200, []pull{original}
+		case strings.Contains(r.URL.Path, "/contents/"):
+			if r.URL.Query().Get("ref") != shaB {
+				t.Error("replacement must use current master files")
+			}
+			name := strings.TrimPrefix(r.URL.Path, "/repos/"+repository+"/contents/")
+			return 200, map[string]string{"content": base64.StdEncoding.EncodeToString([]byte(files()[name])), "encoding": "base64", "sha": shaA}
+		case strings.Contains(r.URL.Path, "/git/ref/tags/"):
+			return 404, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL)
+			return 500, nil
+		}
+	})
+	if _, _, err := a.releaseCandidate(shaA); err == nil {
+		t.Fatal("stale original candidate accepted")
+	}
+	if err := a.ensureNoPendingRelease(); err == nil {
+		t.Fatal("pending original allowed release generation")
+	}
+	original.Labels, replaced = nil, true
+	c, _, err := a.releaseCandidate(shaB)
+	if err != nil || c != (candidate{shaB, "4.5.0", "v4.5.0"}) {
+		t.Fatalf("replacement: %+v %v", c, err)
+	}
+	if err := a.ensureNoPendingRelease(); err == nil {
+		t.Fatal("replacement must remain pending until publication")
+	}
+	env := map[string]string{"GITHUB_REPOSITORY": repository, "GITHUB_REF": "refs/heads/master", "GITHUB_SHA": shaB,
+		"RELEASE_SHA": shaB, "RELEASE_VERSION": c.Version, "RELEASE_TAG": c.Tag}
+	if err := run([]string{"publish"}, a, func(k string) string { return env[k] }); err == nil {
+		t.Fatal("replacement labels bypassed full validation evidence")
+	}
+	for _, request := range *requests {
+		if strings.HasPrefix(request, "POST ") || strings.HasPrefix(request, "DELETE ") {
+			t.Fatal("recovery selection mutated release state")
+		}
+	}
+}

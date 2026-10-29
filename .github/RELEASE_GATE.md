@@ -38,6 +38,29 @@ existing tag targets the validated SHA. Keep the pending label until the release
 exists. Add the tagged label before removing the pending label. Complete recovery
 before generating the next release PR.
 
+## Recovery when master advances before tagging
+
+If master advances during full E2E, publication stops before tag creation.
+The merged release PR stays pending and blocks new release PR generation.
+Rerunning the old candidate cannot release a newer master commit. This is an
+intentional stop; the pending label must not be cleared without a replacement.
+
+1. Pause other merges to master during recovery and the next full source check.
+2. Confirm that the intended release tag does not exist.
+3. Open a replacement release PR from current master.
+4. Keep the unpublished version aligned in the manifest, SDK constant, and changelog.
+5. Update release notes for commits added after the original candidate.
+6. Apply `autorelease: pending` to the replacement PR through a trusted maintainer.
+7. Link the original and replacement PRs in the release ticket.
+8. Obtain approval and passing native checks on the replacement PR.
+9. Remove `autorelease: pending` from the superseded merged release PR.
+10. Merge the replacement PR.
+11. Wait for its full source check and publication before resuming other merges.
+
+The replacement merge SHA becomes a new candidate. It must pass the same full
+E2E and identity checks before publication. Labels alone cannot authorize a tag.
+If the tag already exists, use the post-tag recovery above instead. Do not move it.
+
 ## PR candidate check
 
 The stable check is `Go SDK candidate gate`, from GitHub Actions. The caller checks
