@@ -7,12 +7,12 @@ pre-publication run, custom publisher, or release recovery generator.
 
 ## Which checks run
 
-- Ordinary same-repository PRs run the shared credential-free reliability suite,
-  in addition to the SDK's normal build and unit tests.
+- Every PR runs the SDK build, unit tests, and existing integration checks in
+  the normal SDK workflows. Ordinary PRs do not call the central live workflow.
 - Release Please branches (`release-please--...`) run the full suite: the exact
   current PR merge candidate sends events through the development RudderStack
   pipeline, and the trusted receiver verifies delivery. Success also requires
-  pipeline restoration and lock release.
+  deletion of the run's source, Webhook destination, and connection.
 - Fork and Dependabot PRs skip the credential-bearing caller. They cannot be used
   as release PRs. The native build/test checks still apply.
 - After publication, the existing `published-sdk-e2e.yml` workflow checks the
@@ -23,7 +23,10 @@ The caller never checks out or executes PR code. The shared harness runs SDK
 code in a disposable container. Only the development source write key, data
 plane address and test identifiers enter that container. GitHub and workspace
 administration credentials remain with the trusted harness. A branch prefix
-selects the test suite; it does not grant the candidate additional permissions.
+selects the release PR; it does not grant the candidate additional permissions.
+Each run owns separate Terraform state and resources. Parallel runs do not share
+a destination. Cleanup failures fail the check. Central recovery handles resources
+left after a runner stops unexpectedly.
 
 ## Failed release PR check
 
@@ -42,7 +45,7 @@ an arbitrary later packaging step produces byte-identical artifacts.
 
 ## Activation order
 
-1. Merge the central full-PR support (SDK-6012).
+1. Merge central full-PR support (SDK-6012) and isolated lifecycle (SDK-6015).
 2. Merge and approve the shared action full-PR result support (SDK-6013).
 3. Pin this caller to that reviewed action commit and confirm the organization allows it.
 4. Require `Go SDK candidate gate` on master and retain strict up-to-date checks.
@@ -50,7 +53,7 @@ an arbitrary later packaging step produces byte-identical artifacts.
 6. Refresh release PR #94 and record a successful **full live** central run before merging it.
 
 Steps 1–4 are prerequisites for replacing the old post-merge gate. Code-only
-CI and a green reliability run do not establish full live acceptance or merge
+CI do not establish full live acceptance or merge
 protection. The PR remains draft until these prerequisites are satisfied.
 
 Tracking: [SDK-5979](https://linear.app/rudderstack/issue/SDK-5979).

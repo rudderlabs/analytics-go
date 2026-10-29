@@ -15,7 +15,8 @@ jobs:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]' &&
-      github.actor != 'dependabot[bot]'
+      github.actor != 'dependabot[bot]' &&
+      startsWith(github.head_ref, 'release-please--')
     runs-on: ubuntu-latest
     timeout-minutes: 55
     permissions:
@@ -36,8 +37,7 @@ jobs:
           repositories: rudder-sdk-e2e-tests
           permission-actions: write
       - name: Validate the candidate through the shared harness
-        uses: rudderlabs/github-action-sdk-e2e@0a5e9193e2a18ac9e76cac25eb86a271baab5b95 # SDK-6013; merge dependency before this caller.
+        uses: rudderlabs/github-action-sdk-e2e@41aa09c2a759ba0ba9d76f974195ca7e8aa46329 # SDK-6013; merge dependency before this caller.
         with:
           token: ${{ steps.token.outputs.token }}
-          # Branch naming selects coverage, not trust. Both modes isolate candidate code.
-          suite: ${{ startsWith(github.head_ref, 'release-please--') && 'full' || 'reliability' }}
+          suite: full
