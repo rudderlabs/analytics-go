@@ -1,14 +1,71 @@
-# Go SDK release-gate rollout (SDK-5973 / SDK-5979)
+# Go SDK candidate and release validation
 
-The workflow rewrite also enables weekly grouped GitHub Actions and gomod Dependabot updates (including security updates and immediate internal-dependency bumps); the previous zero-open-PR limit disabled those updates.
+Tracked in [SDK-5979](https://linear.app/rudderstack/issue/SDK-5979).
+Merge [PR #91](https://github.com/rudderlabs/analytics-go/pull/91) first. Its
+published-module acceptance and notification remain separate from the source gate.
 
-This change is ready for code review. The new publisher remains disabled: `GO_RELEASE_GATE_ENABLED` must not be set to `true` until each item below is independently verified. The code task does not change repository settings, create tags, dispatch live E2E, or notify Slack.
+## One publication path
 
-1. Deploy and verify [analytics-go PR #91](https://github.com/rudderlabs/analytics-go/pull/91) **first**. Its exact public v4 Go-module registry-package test and validation-gated final notification remain separate post-publication acceptance. The currently checked-in release-created Slack workflow and E2E caller do not meet this requirement. Coordinate edits to `server-sdk-e2e.yml` on a separate bot-authored draft branch; do not overwrite #91's branch. Preserve its published-mode pin separately from the current candidate pin `rudderlabs/github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4`; replace this pin only after central-adapter review and allowlist verification.
-2. Review as focused bot-authored drafts: PR/check and PR-only Release Please preparation, then the dependent pre-tag publisher. Verify the pinned Release Please action really skips both tags and GitHub Releases while preserving the merged PR's `autorelease: pending` label; confirm who can apply that label and who can merge release metadata. Verify the live merge-ref REST response and token access. The full validation job pins shared-action PR #9 at `52dee838` and consumes its authenticated report. Merge central PR #33 and shared-action PR #9 before enabling publication. Require the full-run report to bind the tested source SHA, tree, module path, installed module version, suite, delivery, restoration and cleanup to this release candidate; compare the verified report in the publisher before tag creation and cover mismatches with credential-free tests. Step success alone is not publication evidence. Verify the central action validates the exact PR merge SHA and exact merged release SHA. Also verify the release App's Actions dispatch and contents-write permissions, action pins against the organization allowlist, tag immutability and master branch writer exclusion during publication. The API freshness check followed by tag creation is not atomic: without exclusive branch writers, master may advance in the final interval, leaving a tag on the validated old SHA. Do not claim strict stale-tip exclusion before that control is verified.
-3. Configure a required status check named exactly **`Go SDK candidate gate`**, source **GitHub Actions**, with strict/up-to-date-branch freshness. Verify that it reports on the *current* PR merge ref. PR jobs check out the event merge SHA so they run the gate code introduced in this PR; selection and the aggregate compare that SHA with the current merge ref, and validation checks it before and after dispatch. The aggregate fails on stale refs, unsupported candidates, missing/failed/cancelled/skipped selection, or failed/cancelled/unexpectedly skipped reliability validation. Fork and Dependabot PRs are explicit exclusions: no App dispatch token, aggregate succeeds only after a fresh merge-ref check and an intentionally skipped validator; native build, test and lint checks remain required. Validate merge-queue compatibility separately (including `merge_group` checks and rule changes if enabled), then actually verify the repository rules. A named check in a workflow is not itself enforcement.
-4. Only after #91, branch controls, central full suite, App permissions, and repository rules are verified, enable the publisher with repository variable `GO_RELEASE_GATE_ENABLED=true`. Leave it unset or false otherwise. With the gate enabled, Release Please proposes PRs with `skip-github-release: true` (its App token needs contents-write to update PR branch files, though only the publisher calls tag creation); no Release Please action may create a tag in parallel with full validation. On a master push, merged release-PR metadata plus the SHA-pinned module, manifest, SDK version and changelog identify the candidate. The exact tag must not exist. An ordinary master push with no matching merged release PR skips the full check and publisher, but an identified release with mismatched files, metadata, or tag fails selection. The reviewed full candidate evidence must match the selected SHA, tree, module and version, with delivery and restoration/cleanup verified before the publish job runs. The publisher repeats identity and master checks and writes a tag at the exact validated 40-character SHA, then a GitHub Release using the reviewed changelog notes.
+Release Please generates release PRs with `skip-github-release: true`. It cannot
+create tags or releases. There is no opt-in variable or fallback publisher.
+Merging this workflow changes publication to the gated path.
 
-The Go module is public from the moment the tag is created. If GitHub Release creation fails after that moment, **do not automatically retry or move the tag**: investigate and recover manually before any new attempt. A manual `workflow_dispatch` to the E2E workflow validates only; it does not tag, upload, or send Slack. A passing push E2E run in parallel is not evidence for publication, and #91's exact registry acceptance is not a replacement for the pre-tag full check.
+A master push selects a merged PR labeled `autorelease: pending`. Selection
+checks the full PR, exact merge commit, module path, manifest, SDK version,
+changelog, and absent release tag. An ordinary commit generates the next release
+PR. Invalid release metadata fails instead of silently skipping the gate.
 
-Release selection fetches each claimed release PR before reading the merged flag. The publisher compares the verified report with the selected commit, tree, module, version, delivery, restoration, and lock release. Release PR generation stops while a merged release remains untagged. When the gate is disabled, Release Please retains its existing tag creation behavior.
+For a selected release, the full shared action validates the exact source commit.
+The caller pins v1.0.0 at `b6de40cc65abe8ee6c6593aac1787aea746b671f`. The publisher
+requires the authenticated common result: `selection=candidate`, SDK, package,
+repository, commit, version, `artifact.source_tree`, delivery, restoration, and
+lock release. No legacy Go report fields are accepted.
+
+Immediately before tag creation, the publisher checks current master again.
+The tag always targets the exact validated SHA. Tag creation publishes the Go
+module. GitHub Release creation follows with the reviewed changelog notes.
+Only after successful release creation does the publisher add `autorelease: tagged`
+and remove `autorelease: pending`. Pending merged releases block new release PRs.
+
+The publication token needs Contents write, Pull requests read, and Issues write.
+The release-PR token also needs Pull requests write. Both tokens use the existing
+release App and stay scoped to this repository. The central dispatch token has
+Actions write only for `rudder-sdk-e2e-tests`.
+
+If release creation or label completion fails after tagging, recover the existing
+release and labels manually. Do not create or move the tag again. Confirm the
+existing tag targets the validated SHA. Keep the pending label until the release
+exists. Add the tagged label before removing the pending label. Complete recovery
+before generating the next release PR.
+
+## PR candidate check
+
+The stable check is `Go SDK candidate gate`, from GitHub Actions. The caller checks
+the event merge SHA, both merge parents, and current master before and after the
+isolated reliability run. Stale events fail. A PR event rerun cannot validate a
+newer merge commit. Update the PR branch to produce a fresh event after base changes.
+
+Fork and Dependabot PRs do not receive the central App token. Their aggregate
+passes only for an explicit exclusion with a fresh candidate and skipped validator.
+Missing, failed, cancelled, or unexpectedly skipped validation fails eligible PRs.
+Same-repository writers use the existing trusted workflow model.
+
+## Rollout evidence
+
+The effective master rules read on 29 October 2026 do not require the candidate
+check. Required-check enforcement remains rollout work; the workflow alone does
+not enforce review or branch freshness.
+
+1. Merge and deploy the published acceptance caller in PR #91.
+2. Verify the release App permissions for both scoped tokens.
+3. Verify the new action pins against the organization allowlist.
+4. Verify ordinary and Release Please PR checks at their current merge SHAs.
+5. Configure the candidate check with strict branch freshness after verification.
+6. Verify branch and tag write controls before enabling normal releases.
+7. Record full source and published acceptance during the next normal release.
+
+The final master read and tag write are separate API calls. They cannot exclude
+a concurrent branch advance atomically. The tag still targets the tested SHA.
+Strict exclusion of branch advances during that interval needs verified branch
+write controls. No repository rules, variables, secrets, or live releases are
+changed by the review task. Manual E2E retries cannot publish or announce.

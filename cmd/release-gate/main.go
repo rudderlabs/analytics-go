@@ -41,6 +41,8 @@ func (a githubAPI) get(path string, result any) error {
 	}
 	req.Header.Set("Authorization", "Bearer "+a.token)
 	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
+	req.Header.Set("Cache-Control", "no-cache")
 	res, err := a.client.Do(req)
 	if err != nil {
 		return err
@@ -56,24 +58,32 @@ func (a githubAPI) get(path string, result any) error {
 }
 
 func (a githubAPI) post(path string, body any, result any) error {
+	return a.write(http.MethodPost, path, body, result, http.StatusCreated)
+}
+
+func (a githubAPI) write(method, path string, body any, result any, expected int) error {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, a.url+path, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(context.Background(), method, a.url+path, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+a.token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 	res, err := a.client.Do(req)
 	if err != nil {
 		return err
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusCreated {
-		return fmt.Errorf("GitHub POST %s: status %d", path, res.StatusCode)
+	if res.StatusCode != expected {
+		return fmt.Errorf("GitHub %s %s: status %d", method, path, res.StatusCode)
+	}
+	if result == nil {
+		return nil
 	}
 	return json.NewDecoder(res.Body).Decode(result)
 }
@@ -175,6 +185,22 @@ func (a githubAPI) currentPR(number int, eventSHA string) (pull, bool, error) {
 	}
 	if !shaPattern.MatchString(eventSHA) || sha != eventSHA {
 		return p, false, errors.New("stale PR merge SHA")
+	}
+	master, err := a.masterSHA()
+	if err != nil {
+		return p, false, err
+	}
+	var commit struct {
+		Parents []struct {
+			SHA string `json:"sha"`
+		} `json:"parents"`
+	}
+	if err := a.get("/repos/"+repository+"/git/commits/"+sha, &commit); err != nil {
+		return p, false, err
+	}
+	if p.Base.SHA != master || len(commit.Parents) != 2 ||
+		commit.Parents[0].SHA != master || commit.Parents[1].SHA != p.Head.SHA {
+		return p, false, errors.New("PR merge parents no longer match current master and head")
 	}
 	return p, excluded, nil
 }
@@ -299,31 +325,8 @@ func (a githubAPI) releaseCandidate(sha string) (candidate, string, error) {
 	if master != sha {
 		return c, "", errors.New("master advanced during validation")
 	}
-	var prs []pull
-	if err := a.get("/repos/"+repository+"/commits/"+sha+"/pulls", &prs); err != nil {
+	if _, err := a.releasePR(sha); err != nil {
 		return c, "", err
-	}
-	var releasePR pull
-	for _, listed := range prs {
-		if !hasReleaseLabel(listed.Labels) {
-			continue
-		}
-		// Commit-associated PR responses omit the merged boolean. Fetch the full PR.
-		var detail pull
-		if err := a.get(fmt.Sprintf("/repos/%s/pulls/%d", repository, listed.Number), &detail); err != nil {
-			return c, "", err
-		}
-		if !detail.Merged {
-			continue
-		}
-		if detail.Number != listed.Number || detail.MergeCommitSHA != sha || !isReleasePR(detail) ||
-			!hasReleaseLabel(detail.Labels) || releasePR.Number != 0 {
-			return c, "", errors.New("invalid or ambiguous merged release PR")
-		}
-		releasePR = detail
-	}
-	if releasePR.Number == 0 {
-		return c, "", ErrNoReleaseCandidate
 	}
 	files := make([]string, 4)
 	for i, path := range []string{"go.mod", ".release-please-manifest.json", "analytics.go", "CHANGELOG.md"} {
@@ -350,6 +353,41 @@ func (a githubAPI) releaseCandidate(sha string) (candidate, string, error) {
 	return c, notes, nil
 }
 
+func (a githubAPI) releasePR(sha string) (pull, error) {
+	var selected pull
+	for page := 1; page <= 10; page++ {
+		var prs []pull
+		if err := a.get(fmt.Sprintf("/repos/%s/commits/%s/pulls?per_page=100&page=%d", repository, sha, page), &prs); err != nil {
+			return selected, err
+		}
+		for _, listed := range prs {
+			if !hasReleaseLabel(listed.Labels) {
+				continue
+			}
+			// Commit-associated PR responses omit the merged boolean.
+			var detail pull
+			if err := a.get(fmt.Sprintf("/repos/%s/pulls/%d", repository, listed.Number), &detail); err != nil {
+				return selected, err
+			}
+			if !detail.Merged {
+				continue
+			}
+			if detail.Number != listed.Number || detail.MergeCommitSHA != sha || !isReleasePR(detail) ||
+				!hasReleaseLabel(detail.Labels) || selected.Number != 0 {
+				return selected, errors.New("invalid or ambiguous merged release PR")
+			}
+			selected = detail
+		}
+		if len(prs) < 100 {
+			if selected.Number == 0 {
+				return selected, ErrNoReleaseCandidate
+			}
+			return selected, nil
+		}
+	}
+	return selected, errors.New("release PR scan exceeded pagination limit")
+}
+
 func isReleasePR(p pull) bool {
 	return p.Base.Ref == "master" && p.Base.Repo.FullName == repository && p.Head.Repo.FullName == repository
 }
@@ -368,21 +406,26 @@ func (a githubAPI) verifyEvidence(c candidate, report, validatedSHA string) erro
 		Schema     int    `json:"schema_version"`
 		Repository string `json:"repository"`
 		Commit     string `json:"commit"`
-		SourceTree string `json:"source_tree"`
-		Module     string `json:"module"`
-		Version    string `json:"version"`
-		Run        int64  `json:"central_run_id"`
-		Attempt    int    `json:"central_run_attempt"`
-		Request    string `json:"request_id"`
-		Delivery   bool   `json:"delivery_passed"`
-		Restored   bool   `json:"restoration_verified"`
-		Unlocked   bool   `json:"lock_released"`
+		SDK        string `json:"sdk"`
+		Selection  string `json:"selection"`
+		Package    string `json:"package"`
+		Artifact   struct {
+			SourceTree string `json:"source_tree"`
+		} `json:"artifact"`
+		Version  string `json:"version"`
+		Run      int64  `json:"central_run_id"`
+		Attempt  int    `json:"central_run_attempt"`
+		Request  string `json:"request_id"`
+		Delivery bool   `json:"delivery_passed"`
+		Restored bool   `json:"restoration_verified"`
+		Unlocked bool   `json:"lock_released"`
 	}
 	if len(report) > 1<<20 || json.Unmarshal([]byte(report), &evidence) != nil || validatedSHA != c.SHA ||
 		evidence.Schema != 1 || evidence.Repository != repository || evidence.Commit != c.SHA ||
-		evidence.Module != "github.com/rudderlabs/analytics-go/v4" || evidence.Version != c.Version ||
+		evidence.SDK != "go" || evidence.Selection != "candidate" ||
+		evidence.Package != "github.com/rudderlabs/analytics-go/v4" || evidence.Version != c.Version ||
 		evidence.Run <= 0 || evidence.Attempt <= 0 || evidence.Request == "" ||
-		!evidence.Delivery || !evidence.Restored || !evidence.Unlocked || !shaPattern.MatchString(evidence.SourceTree) {
+		!evidence.Delivery || !evidence.Restored || !evidence.Unlocked || !shaPattern.MatchString(evidence.Artifact.SourceTree) {
 		return errors.New("missing or inconsistent verified full candidate evidence")
 	}
 	var commit struct {
@@ -393,7 +436,7 @@ func (a githubAPI) verifyEvidence(c candidate, report, validatedSHA string) erro
 	if err := a.get("/repos/"+repository+"/git/commits/"+c.SHA, &commit); err != nil {
 		return err
 	}
-	if commit.Tree.SHA != evidence.SourceTree {
+	if commit.Tree.SHA != evidence.Artifact.SourceTree {
 		return errors.New("validated source tree differs from release commit")
 	}
 	return nil
@@ -420,22 +463,7 @@ func (a githubAPI) ensureNoPendingRelease() error {
 			if !isReleasePR(detail) || !shaPattern.MatchString(detail.MergeCommitSHA) {
 				return errors.New("invalid pending release identity")
 			}
-			manifest, err := a.file(detail.MergeCommitSHA, ".release-please-manifest.json")
-			if err != nil {
-				return err
-			}
-			var versions map[string]string
-			if json.Unmarshal([]byte(manifest), &versions) != nil || !versionPattern.MatchString(versions["."]) {
-				return errors.New("invalid pending release version")
-			}
-			var ref any
-			err = a.get("/repos/"+repository+"/git/ref/tags/v"+versions["."], &ref)
-			if errors.Is(err, errNotFound) {
-				return errors.New("a merged release remains untagged; recover it before generating another release PR")
-			}
-			if err != nil {
-				return err
-			}
+			return errors.New("a merged release remains pending; complete release creation and labels before another release PR")
 		}
 		if len(prs) < 100 {
 			return nil
@@ -452,6 +480,17 @@ func (a githubAPI) publish(c candidate) error {
 	if verified != c {
 		return errors.New("candidate identity changed")
 	}
+	p, err := a.releasePR(c.SHA)
+	if err != nil {
+		return err
+	}
+	master, err := a.masterSHA()
+	if err != nil {
+		return err
+	}
+	if master != c.SHA {
+		return errors.New("master advanced before tag creation")
+	}
 	// Tag creation is the Go module publication boundary. Never retry or move an
 	// existing tag if GitHub Release creation fails; recover it manually.
 	var ref any
@@ -459,7 +498,14 @@ func (a githubAPI) publish(c candidate) error {
 		return err
 	}
 	var release any
-	return a.post("/repos/"+repository+"/releases", map[string]any{"tag_name": c.Tag, "target_commitish": c.SHA, "name": c.Tag, "body": notes, "draft": false, "prerelease": false}, &release)
+	if err := a.post("/repos/"+repository+"/releases", map[string]any{"tag_name": c.Tag, "target_commitish": c.SHA, "name": c.Tag, "body": notes, "draft": false, "prerelease": false}, &release); err != nil {
+		return err
+	}
+	labels := fmt.Sprintf("/repos/%s/issues/%d/labels", repository, p.Number)
+	if err := a.write(http.MethodPost, labels, map[string]any{"labels": []string{"autorelease: tagged"}}, nil, http.StatusOK); err != nil {
+		return err
+	}
+	return a.write(http.MethodDelete, labels+"/autorelease:%20pending", nil, nil, http.StatusNoContent)
 }
 
 func output(key, value string) error {

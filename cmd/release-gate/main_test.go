@@ -70,6 +70,12 @@ func TestCurrentPRRejectsStaleAndUnsupported(t *testing.T) {
 		if strings.Contains(r.URL.Path, "/pulls/42") {
 			return 200, p
 		}
+		if strings.HasSuffix(r.URL.Path, "/branches/master") {
+			return 200, map[string]any{"commit": map[string]string{"sha": shaB}}
+		}
+		if strings.Contains(r.URL.Path, "/git/commits/") {
+			return 200, map[string]any{"parents": []map[string]string{{"sha": shaB}, {"sha": shaA}}}
+		}
 		return 200, map[string]any{"object": map[string]string{"sha": shaA}}
 	})
 	if _, _, err := a.currentPR(42, shaA); err != nil {
@@ -103,6 +109,12 @@ func TestPRGateResultsAndFreshness(t *testing.T) {
 	a, _ := testAPI(t, func(r *http.Request) (int, any) {
 		if strings.Contains(r.URL.Path, "/pulls/42") {
 			return 200, p
+		}
+		if strings.HasSuffix(r.URL.Path, "/branches/master") {
+			return 200, map[string]any{"commit": map[string]string{"sha": shaB}}
+		}
+		if strings.Contains(r.URL.Path, "/git/commits/") {
+			return 200, map[string]any{"parents": []map[string]string{{"sha": shaB}, {"sha": shaA}}}
 		}
 		return 200, map[string]any{"object": map[string]string{"sha": ref}}
 	})
@@ -196,6 +208,8 @@ func TestReleaseCandidateAndPublish(t *testing.T) {
 			return 200, []pull{listed}
 		case strings.HasSuffix(r.URL.Path, "/pulls/42"):
 			return 200, p
+		case strings.HasSuffix(r.URL.Path, "/pulls"):
+			return 200, []pull{p}
 		case strings.Contains(r.URL.Path, "/contents/"):
 			if r.URL.Query().Get("ref") != shaA {
 				t.Error("wrong file ref")
@@ -217,6 +231,19 @@ func TestReleaseCandidateAndPublish(t *testing.T) {
 			return 201, map[string]string{"ref": body.Ref}
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/releases"):
 			return 201, map[string]string{"tag_name": "v4.5.0"}
+		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/issues/42/labels"):
+			var body struct {
+				Labels []string `json:"labels"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			if len(body.Labels) != 1 || body.Labels[0] != "autorelease: tagged" {
+				t.Error("wrong label transition")
+			}
+			p.Labels = append(p.Labels, label{"autorelease: tagged"})
+			return 200, nil
+		case r.Method == "DELETE" && strings.HasSuffix(r.URL.Path, "/labels/autorelease: pending"):
+			p.Labels = []label{{"autorelease: tagged"}}
+			return 204, nil
 		default:
 			t.Errorf("unexpected request %s", r.URL)
 			return 500, nil
@@ -229,6 +256,15 @@ func TestReleaseCandidateAndPublish(t *testing.T) {
 	if err := a.publish(c); err != nil || tagSHA != shaA {
 		t.Fatalf("tag target=%s err=%v", tagSHA, err)
 	}
+	if err := a.ensureNoPendingRelease(); err != nil {
+		t.Fatalf("completed release blocks the next release cycle: %v", err)
+	}
+	joined := strings.Join(*requests, "\n")
+	if strings.Index(joined, "POST /repos/"+repository+"/releases") > strings.Index(joined, "POST /repos/"+repository+"/issues/42/labels") ||
+		!strings.Contains(joined, "DELETE /repos/"+repository+"/issues/42/labels/autorelease:%20pending") {
+		t.Fatal("labels must complete only after GitHub Release creation")
+	}
+	p.Labels = []label{{"autorelease: pending"}}
 	if err := a.publish(candidate{shaA, "4.5.1", "v4.5.1"}); err == nil {
 		t.Fatal("mismatched version and tag published")
 	}
@@ -321,11 +357,12 @@ func TestPublicationRequiresVerifiedEvidenceBeforeAnyMutation(t *testing.T) {
 		return 200, map[string]any{"tree": map[string]string{"sha": tree}}
 	})
 	valid := map[string]any{"schema_version": 1, "repository": repository, "commit": shaA,
-		"source_tree": shaB, "module": "github.com/rudderlabs/analytics-go/v4", "version": "4.5.0",
+		"sdk": "go", "selection": "candidate", "artifact": map[string]string{"source_tree": shaB},
+		"package": "github.com/rudderlabs/analytics-go/v4", "version": "4.5.0",
 		"central_run_id": 123, "central_run_attempt": 2, "request_id": "request", "delivery_passed": true,
 		"restoration_verified": true, "lock_released": true}
 	candidate := candidate{shaA, "4.5.0", "v4.5.0"}
-	for _, key := range []string{"repository", "commit", "source_tree", "module", "version", "schema_version",
+	for _, key := range []string{"repository", "commit", "sdk", "selection", "artifact", "package", "version", "schema_version",
 		"central_run_id", "central_run_attempt", "delivery_passed", "restoration_verified", "lock_released"} {
 		t.Run(key, func(t *testing.T) {
 			bad := map[string]any{}
@@ -338,6 +375,27 @@ func TestPublicationRequiresVerifiedEvidenceBeforeAnyMutation(t *testing.T) {
 				t.Fatal("incomplete evidence accepted")
 			}
 		})
+	}
+	for _, selection := range []string{"published", "pinned"} {
+		bad := make(map[string]any)
+		for k, v := range valid {
+			bad[k] = v
+		}
+		bad["selection"] = selection
+		body, _ := json.Marshal(bad)
+		if err := a.verifyEvidence(candidate, string(body), shaA); err == nil {
+			t.Fatal("non-candidate result authorized publication")
+		}
+	}
+	legacy := make(map[string]any)
+	for k, v := range valid {
+		legacy[k] = v
+	}
+	delete(legacy, "artifact")
+	legacy["source_tree"], legacy["module"] = shaB, "github.com/rudderlabs/analytics-go/v4"
+	legacyBody, _ := json.Marshal(legacy)
+	if err := a.verifyEvidence(candidate, string(legacyBody), shaA); err == nil {
+		t.Fatal("legacy report accepted")
 	}
 	body, _ := json.Marshal(valid)
 	if err := a.verifyEvidence(candidate, string(body), shaA); err != nil {
@@ -364,20 +422,12 @@ func TestPendingReleaseStopsGeneration(t *testing.T) {
 	p.Merged = true
 	p.MergeCommitSHA = shaA
 	p.Labels = []label{{"autorelease: pending"}}
-	tagged := false
 	a, _ := testAPI(t, func(r *http.Request) (int, any) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/pulls"):
 			return 200, []pull{p}
 		case strings.HasSuffix(r.URL.Path, "/pulls/42"):
 			return 200, p
-		case strings.Contains(r.URL.Path, "/contents/"):
-			return 200, map[string]string{"content": base64.StdEncoding.EncodeToString([]byte(`{".":"4.5.0"}`)), "encoding": "base64", "sha": shaB}
-		case strings.HasSuffix(r.URL.Path, "/git/ref/tags/v4.5.0"):
-			if tagged {
-				return 200, map[string]string{"ref": "refs/tags/v4.5.0"}
-			}
-			return 404, nil
 		default:
 			t.Fatalf("unexpected %s", r.URL)
 			return 500, nil
@@ -386,8 +436,112 @@ func TestPendingReleaseStopsGeneration(t *testing.T) {
 	if err := a.ensureNoPendingRelease(); err == nil {
 		t.Fatal("untagged release allowed another PR")
 	}
-	tagged = true
+	p.Labels = []label{{"autorelease: tagged"}}
 	if err := a.ensureNoPendingRelease(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPRMergeParentsMustMatchCurrentBaseAndHead(t *testing.T) {
+	for _, tc := range []struct {
+		name, master string
+		parents      []map[string]string
+	}{
+		{"advanced master", shaA, []map[string]string{{"sha": shaB}, {"sha": shaA}}},
+		{"stale base parent", shaB, []map[string]string{{"sha": shaA}, {"sha": shaA}}},
+		{"stale head parent", shaB, []map[string]string{{"sha": shaB}, {"sha": shaB}}},
+		{"missing parents", shaB, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _ := testAPI(t, func(r *http.Request) (int, any) {
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/pulls/42"):
+					return 200, makePR()
+				case strings.HasSuffix(r.URL.Path, "/branches/master"):
+					return 200, map[string]any{"commit": map[string]string{"sha": tc.master}}
+				case strings.Contains(r.URL.Path, "/git/commits/"):
+					return 200, map[string]any{"parents": tc.parents}
+				default:
+					return 200, map[string]any{"object": map[string]string{"sha": shaA}}
+				}
+			})
+			if _, _, err := a.currentPR(42, shaA); err == nil {
+				t.Fatal("stale merge parents accepted")
+			}
+		})
+	}
+}
+
+func TestPublicationFailureKeepsReleasePending(t *testing.T) {
+	for _, mode := range []string{"late master advance", "release creation failure", "label completion failure"} {
+		t.Run(mode, func(t *testing.T) {
+			p := makePR()
+			p.Merged, p.MergeCommitSHA, p.Labels = true, shaA, []label{{"autorelease: pending"}}
+			masterReads := 0
+			a, requests := testAPI(t, func(r *http.Request) (int, any) {
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/branches/master"):
+					masterReads++
+					sha := shaA
+					if mode == "late master advance" && masterReads > 1 {
+						sha = shaB
+					}
+					return 200, map[string]any{"commit": map[string]string{"sha": sha}}
+				case strings.HasSuffix(r.URL.Path, "/commits/"+shaA+"/pulls"):
+					return 200, []pull{p}
+				case strings.HasSuffix(r.URL.Path, "/pulls/42"):
+					return 200, p
+				case strings.Contains(r.URL.Path, "/contents/"):
+					name := strings.TrimPrefix(r.URL.Path, "/repos/"+repository+"/contents/")
+					return 200, map[string]string{"content": base64.StdEncoding.EncodeToString([]byte(files()[name])), "encoding": "base64", "sha": shaB}
+				case strings.Contains(r.URL.Path, "/git/ref/tags/"):
+					return 404, nil
+				case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/git/refs"):
+					return 201, map[string]string{"ref": "refs/tags/v4.5.0"}
+				case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/releases"):
+					if mode == "release creation failure" {
+						return 500, nil
+					}
+					return 201, map[string]string{"tag_name": "v4.5.0"}
+				case strings.HasSuffix(r.URL.Path, "/issues/42/labels"):
+					return 500, nil
+				default:
+					t.Fatalf("unexpected request: %s %s", r.Method, r.URL)
+					return 500, nil
+				}
+			})
+			if err := a.publish(candidate{shaA, "4.5.0", "v4.5.0"}); err == nil {
+				t.Fatal("publication failure ignored")
+			}
+			for _, request := range *requests {
+				if strings.HasPrefix(request, "DELETE ") {
+					t.Fatal("failed release cleared its pending label")
+				}
+				if mode == "late master advance" && strings.HasPrefix(request, "POST ") {
+					t.Fatal("stale master caused a write")
+				}
+				if mode == "release creation failure" && strings.Contains(request, "/issues/42/labels") {
+					t.Fatal("failed release changed labels")
+				}
+			}
+		})
+	}
+}
+
+func TestReleaseSelectionPaginatesAssociatedPRs(t *testing.T) {
+	p := makePR()
+	p.Merged, p.MergeCommitSHA, p.Labels = true, shaA, []label{{"autorelease: pending"}}
+	a, _ := testAPI(t, func(r *http.Request) (int, any) {
+		if strings.HasSuffix(r.URL.Path, "/pulls/42") {
+			return 200, p
+		}
+		if r.URL.Query().Get("page") == "1" {
+			return 200, make([]pull, 100)
+		}
+		return 200, []pull{p}
+	})
+	selected, err := a.releasePR(shaA)
+	if err != nil || selected.Number != 42 {
+		t.Fatalf("release on second page: %+v %v", selected, err)
 	}
 }

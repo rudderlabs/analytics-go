@@ -38,12 +38,15 @@ func TestPublicationDependencyGraph(t *testing.T) {
 		t.Fatal("PR generation must wait for release selection")
 	}
 	steps := pr["steps"].([]any)
-	if field(t, steps[len(steps)-1].(map[any]any), "with")["skip-github-release"] != "${{ vars.GO_RELEASE_GATE_ENABLED == 'true' }}" {
+	if field(t, steps[len(steps)-1].(map[any]any), "with")["skip-github-release"] != true {
 		t.Fatal("Release Please must never create tags")
 	}
-	selectJob := field(t, jobs, "select-release")
-	if selectJob["if"] == nil || !strings.Contains(selectJob["if"].(string), "GO_RELEASE_GATE_ENABLED") {
-		t.Fatal("publisher not opt-in")
+	data, err := os.ReadFile("../../.github/workflows/release-please.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "GO_RELEASE_GATE_ENABLED") {
+		t.Fatal("publication must have one gated path")
 	}
 	full := field(t, jobs, "validate-release")
 	if full["needs"] != "select-release" || !strings.Contains(asString(full["if"]), "needs.select-release.outputs.release == 'true'") {
@@ -61,7 +64,7 @@ func TestPublicationDependencyGraph(t *testing.T) {
 	var fullAction, publisherWrites, validatorWrites bool
 	for _, raw := range full["steps"].([]any) {
 		step := raw.(map[any]any)
-		if strings.Contains(asString(step["uses"]), "github-action-sdk-e2e@52dee838") && field(t, step, "with")["suite"] == "full" {
+		if strings.Contains(asString(step["uses"]), "github-action-sdk-e2e@b6de40cc65abe8ee6c6593aac1787aea746b671f") && field(t, step, "with")["suite"] == "full" {
 			fullAction = true
 		}
 		if strings.Contains(asString(step["run"]), "publish") {
@@ -72,6 +75,14 @@ func TestPublicationDependencyGraph(t *testing.T) {
 		step := raw.(map[any]any)
 		if strings.Contains(asString(step["run"]), "release-gate publish") {
 			publisherWrites = true
+		}
+		if asString(step["id"]) == "token" {
+			permissions := field(t, step, "with")
+			for _, name := range []string{"permission-contents", "permission-pull-requests", "permission-issues"} {
+				if permissions[name] == nil {
+					t.Fatalf("publication token missing %s", name)
+				}
+			}
 		}
 	}
 	if !fullAction || validatorWrites || !publisherWrites {

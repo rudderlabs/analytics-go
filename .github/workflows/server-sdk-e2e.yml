@@ -52,7 +52,10 @@ jobs:
 
   validate:
     needs: select-pr
-    if: github.event.pull_request.user.login != 'dependabot[bot]' && needs.select-pr.outputs.eligible == 'true'
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      github.actor != 'dependabot[bot]' && needs.select-pr.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     permissions:
