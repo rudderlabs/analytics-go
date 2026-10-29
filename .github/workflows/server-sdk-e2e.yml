@@ -13,8 +13,6 @@ on:
         type: choice
         options: [reliability, full]
         default: reliability
-  release:
-    types: [published]
 
 permissions: {}
 
@@ -87,7 +85,7 @@ jobs:
           repositories: rudder-sdk-e2e-tests
           permission-actions: write
       - name: Validate current PR candidate in isolated reliability mode
-        uses: rudderlabs/github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4
+        uses: rudderlabs/github-action-sdk-e2e@b6de40cc65abe8ee6c6593aac1787aea746b671f # v1.0.0
         with:
           token: ${{ steps.token.outputs.token }}
           suite: reliability
@@ -127,10 +125,9 @@ jobs:
           EXCLUDED: ${{ needs.select-pr.outputs.excluded }}
         run: go run ./cmd/release-gate pr-gate
 
-  # Retain manual retries and independent post-publication registry validation.
-  # These never publish; PR #91 owns the published-package acceptance and notification.
+  # Manual and push validation cannot publish. Published acceptance is separate.
   validate-other:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'release' || github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
@@ -148,7 +145,7 @@ jobs:
           repositories: rudder-sdk-e2e-tests
           permission-actions: write
       - name: Validate without publication
-        uses: rudderlabs/github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4
+        uses: rudderlabs/github-action-sdk-e2e@b6de40cc65abe8ee6c6593aac1787aea746b671f # v1.0.0
         with:
           token: ${{ steps.token.outputs.token }}
           suite: ${{ inputs.suite || vars.SDK_E2E_SUITE || 'reliability' }}

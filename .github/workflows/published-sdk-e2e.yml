@@ -1,0 +1,189 @@
+name: Published Go SDK E2E
+
+on:
+  release:
+    types: [published]
+  # Retry validation at an existing release tag. This workflow cannot publish.
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing stable GitHub release tag (v4.x.y)
+        required: true
+        type: string
+      module_version:
+        description: Exact Go module version (v4.x.y)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: published-go-sdk-e2e-${{ github.run_id }}
+  cancel-in-progress: false
+
+# Do not cancel live validation; the central workflow owns locking and cleanup.
+jobs:
+  release-ref:
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Require the release event's exact stable tag
+        id: release
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/tags/$RELEASE_TAG" ]] ||
+             [[ ! "$RELEASE_TAG" =~ ^v4\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo 'Release metadata must match an exact stable v4 tag.' >&2
+            exit 1
+          fi
+          echo "version=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: release-ref
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    uses: rudderlabs/github-action-sdk-e2e/.github/workflows/published-sdk-e2e.yml@b6de40cc65abe8ee6c6593aac1787aea746b671f # v1.0.0
+    with:
+      package-version: ${{ needs.release-ref.outputs.version }}
+      release-app-id: ${{ vars.RELEASE_APP_ID }}
+    secrets:
+      RELEASE_PRIVATE_KEY: ${{ secrets.RELEASE_PRIVATE_KEY }}
+
+  retry-ref:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Verify exact tag, version, and existing published release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          MODULE_VERSION: ${{ inputs.module_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v4\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] ||
+             [[ "$MODULE_VERSION" != "$RELEASE_TAG" ]] ||
+             [[ "$GITHUB_REF" != "refs/tags/$RELEASE_TAG" ]]; then
+            echo 'Select the existing stable release tag and matching exact v4 module version.' >&2
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" |
+            jq -e --arg tag "$RELEASE_TAG" '.tag_name == $tag and .draft == false and .prerelease == false and .published_at != null' >/dev/null
+          echo "version=$MODULE_VERSION" >> "$GITHUB_OUTPUT"
+
+  retry:
+    needs: retry-ref
+    if: github.event_name == 'workflow_dispatch'
+    uses: rudderlabs/github-action-sdk-e2e/.github/workflows/published-sdk-e2e.yml@b6de40cc65abe8ee6c6593aac1787aea746b671f # v1.0.0
+    with:
+      package-version: ${{ needs.retry-ref.outputs.version }}
+      release-app-id: ${{ vars.RELEASE_APP_ID }}
+    secrets:
+      RELEASE_PRIVATE_KEY: ${{ secrets.RELEASE_PRIVATE_KEY }}
+
+  notify:
+    if: always() && github.event_name == 'release' && !github.event.release.prerelease && github.run_attempt == '1'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions: {}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Prepare short root and detailed thread reply
+        id: message
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_DATE: ${{ github.event.release.published_at || github.event.release.created_at }}
+          VALIDATION_RESULT: ${{ needs.validate.result }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+          CENTRAL_RUN_URL: ${{ needs.validate.outputs.run-url }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import html
+          import json
+          import os
+          import re
+
+          release_tag = os.environ['RELEASE_TAG']
+          tag = html.escape(release_tag[:80], quote=False).replace('\n', ' ')
+          date = os.environ['RELEASE_DATE'][:10]
+          success = os.environ['VALIDATION_RESULT'] == 'success'
+          status = 'published; validation passed' if success else 'published; validation failed or incomplete'
+          root = f'Go SDK {tag} | {date} | {status}'
+          checks = 'passed' if success else 'failed or incomplete'
+          release_url = os.environ['RELEASE_URL']
+          workflow_url = os.environ['WORKFLOW_URL']
+          detail = f'<{release_url}|Release> | <{workflow_url}|Acceptance run>\nGo proxy, delivery, and cleanup: {checks}'
+          if re.fullmatch(r'v4\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', release_tag):
+              module_url = f'https://proxy.golang.org/github.com/rudderlabs/analytics-go/v4/@v/{release_tag}.info'
+              detail += f'\n<{module_url}|Go module {release_tag}>'
+          else:
+              detail += '\nGo module: unavailable (invalid v4 release tag)'
+          central_url = os.environ['CENTRAL_RUN_URL']
+          if re.fullmatch(r'https://github\.com/rudderlabs/rudder-sdk-e2e-tests/actions/runs/[0-9]+', central_url):
+              detail += f'\n<{central_url}|Central E2E run>'
+          else:
+              detail += '\nCentral E2E run: unavailable'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write(root + '\n\n' + detail + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as output:
+              output.write('root_json=' + json.dumps(root) + '\n')
+              output.write('detail_json=' + json.dumps(detail) + '\n')
+          PY
+      - name: Post release acceptance root
+        id: root
+        env:
+          SLACK_RELEASE_CHANNEL_ID: ${{ secrets.SLACK_RELEASE_CHANNEL_ID }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          method: chat.postMessage
+          errors: true
+          retries: rapid
+          payload: |
+            {
+              "channel": ${{ toJSON(env.SLACK_RELEASE_CHANNEL_ID) }},
+              "text": ${{ steps.message.outputs.root_json }},
+              "unfurl_links": false,
+              "unfurl_media": false
+            }
+      - name: Post links and check results in the release thread
+        env:
+          SLACK_RELEASE_CHANNEL_ID: ${{ secrets.SLACK_RELEASE_CHANNEL_ID }}
+        uses: slackapi/slack-github-action@dcb1066f776dd043e64d0e8ba94ca15cc7e1875d # v4.0.0
+        with:
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          method: chat.postMessage
+          errors: true
+          retries: rapid
+          payload: |
+            {
+              "channel": ${{ toJSON(env.SLACK_RELEASE_CHANNEL_ID) }},
+              "thread_ts": ${{ toJSON(steps.root.outputs.ts) }},
+              "text": ${{ steps.message.outputs.detail_json }},
+              "reply_broadcast": false,
+              "unfurl_links": false,
+              "unfurl_media": false
+            }
