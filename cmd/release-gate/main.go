@@ -14,6 +14,7 @@ import (
 	"go/token"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -303,24 +304,26 @@ func (a githubAPI) releaseCandidate(sha string) (candidate, string, error) {
 		return c, "", err
 	}
 	var releasePR pull
-	for _, p := range prs {
-		if p.Merged && p.MergeCommitSHA == sha && hasReleaseLabel(p.Labels) {
-			if !isReleasePR(p) || releasePR.Number != 0 {
-				return c, "", errors.New("invalid or ambiguous merged release PR")
-			}
-			releasePR = p
+	for _, listed := range prs {
+		if !hasReleaseLabel(listed.Labels) {
+			continue
 		}
+		// Commit-associated PR responses omit the merged boolean. Fetch the full PR.
+		var detail pull
+		if err := a.get(fmt.Sprintf("/repos/%s/pulls/%d", repository, listed.Number), &detail); err != nil {
+			return c, "", err
+		}
+		if !detail.Merged {
+			continue
+		}
+		if detail.Number != listed.Number || detail.MergeCommitSHA != sha || !isReleasePR(detail) ||
+			!hasReleaseLabel(detail.Labels) || releasePR.Number != 0 {
+			return c, "", errors.New("invalid or ambiguous merged release PR")
+		}
+		releasePR = detail
 	}
 	if releasePR.Number == 0 {
 		return c, "", ErrNoReleaseCandidate
-	}
-	var verified pull
-	if err := a.get(fmt.Sprintf("/repos/%s/pulls/%d", repository, releasePR.Number), &verified); err != nil {
-		return c, "", err
-	}
-	if verified.Number != releasePR.Number || !verified.Merged || verified.MergeCommitSHA != sha ||
-		!hasReleaseLabel(verified.Labels) || !isReleasePR(verified) {
-		return c, "", errors.New("release PR identity changed")
 	}
 	files := make([]string, 4)
 	for i, path := range []string{"go.mod", ".release-please-manifest.json", "analytics.go", "CHANGELOG.md"} {
@@ -360,6 +363,87 @@ func hasReleaseLabel(labels []label) bool {
 	return false
 }
 
+func (a githubAPI) verifyEvidence(c candidate, report, validatedSHA string) error {
+	var evidence struct {
+		Schema     int    `json:"schema_version"`
+		Repository string `json:"repository"`
+		Commit     string `json:"commit"`
+		SourceTree string `json:"source_tree"`
+		Module     string `json:"module"`
+		Version    string `json:"version"`
+		Run        int64  `json:"central_run_id"`
+		Attempt    int    `json:"central_run_attempt"`
+		Request    string `json:"request_id"`
+		Delivery   bool   `json:"delivery_passed"`
+		Restored   bool   `json:"restoration_verified"`
+		Unlocked   bool   `json:"lock_released"`
+	}
+	if len(report) > 1<<20 || json.Unmarshal([]byte(report), &evidence) != nil || validatedSHA != c.SHA ||
+		evidence.Schema != 1 || evidence.Repository != repository || evidence.Commit != c.SHA ||
+		evidence.Module != "github.com/rudderlabs/analytics-go/v4" || evidence.Version != c.Version ||
+		evidence.Run <= 0 || evidence.Attempt <= 0 || evidence.Request == "" ||
+		!evidence.Delivery || !evidence.Restored || !evidence.Unlocked || !shaPattern.MatchString(evidence.SourceTree) {
+		return errors.New("missing or inconsistent verified full candidate evidence")
+	}
+	var commit struct {
+		Tree struct {
+			SHA string `json:"sha"`
+		} `json:"tree"`
+	}
+	if err := a.get("/repos/"+repository+"/git/commits/"+c.SHA, &commit); err != nil {
+		return err
+	}
+	if commit.Tree.SHA != evidence.SourceTree {
+		return errors.New("validated source tree differs from release commit")
+	}
+	return nil
+}
+
+// Block new release PR generation while an earlier merged release remains untagged.
+func (a githubAPI) ensureNoPendingRelease() error {
+	for page := 1; page <= 10; page++ {
+		var prs []pull
+		if err := a.get(fmt.Sprintf("/repos/%s/pulls?state=closed&base=master&sort=updated&direction=desc&per_page=100&page=%d", repository, page), &prs); err != nil {
+			return err
+		}
+		for _, listed := range prs {
+			if !hasReleaseLabel(listed.Labels) {
+				continue
+			}
+			var detail pull
+			if err := a.get(fmt.Sprintf("/repos/%s/pulls/%d", repository, listed.Number), &detail); err != nil {
+				return err
+			}
+			if !detail.Merged {
+				continue
+			}
+			if !isReleasePR(detail) || !shaPattern.MatchString(detail.MergeCommitSHA) {
+				return errors.New("invalid pending release identity")
+			}
+			manifest, err := a.file(detail.MergeCommitSHA, ".release-please-manifest.json")
+			if err != nil {
+				return err
+			}
+			var versions map[string]string
+			if json.Unmarshal([]byte(manifest), &versions) != nil || !versionPattern.MatchString(versions["."]) {
+				return errors.New("invalid pending release version")
+			}
+			var ref any
+			err = a.get("/repos/"+repository+"/git/ref/tags/v"+versions["."], &ref)
+			if errors.Is(err, errNotFound) {
+				return errors.New("a merged release remains untagged; recover it before generating another release PR")
+			}
+			if err != nil {
+				return err
+			}
+		}
+		if len(prs) < 100 {
+			return nil
+		}
+	}
+	return errors.New("pending release scan exceeded pagination limit")
+}
+
 func (a githubAPI) publish(c candidate) error {
 	verified, notes, err := a.releaseCandidate(c.SHA)
 	if err != nil {
@@ -379,7 +463,7 @@ func (a githubAPI) publish(c candidate) error {
 }
 
 func output(key, value string) error {
-	f, err := os.OpenFile(os.Getenv("GITHUB_OUTPUT"), os.O_APPEND|os.O_WRONLY, 0600)
+	f, err := os.OpenFile(filepath.Clean(os.Getenv("GITHUB_OUTPUT")), os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return err
 	}
@@ -436,19 +520,29 @@ func run(args []string, a githubAPI, env func(string) string) error {
 			return nil
 		}
 		return errors.New("candidate validation failed, cancelled or skipped unexpectedly")
-	case "select-release", "verify-release", "publish":
+	case "select-release", "verify-release", "verify-evidence", "ensure-no-pending-release", "publish":
 		if env("GITHUB_REPOSITORY") != repository || env("GITHUB_REF") != "refs/heads/master" {
 			return errors.New("not a master release event")
+		}
+		if args[0] == "ensure-no-pending-release" {
+			return a.ensureNoPendingRelease()
 		}
 		sha := env("GITHUB_SHA")
 		if args[0] != "select-release" {
 			sha = env("RELEASE_SHA")
 		}
+		if args[0] == "verify-evidence" {
+			return a.verifyEvidence(candidate{sha, env("RELEASE_VERSION"), env("RELEASE_TAG")}, env("CANDIDATE_REPORT"), env("VALIDATED_SHA"))
+		}
 		if args[0] == "publish" {
 			if sha != env("GITHUB_SHA") {
 				return errors.New("publication source differs from triggering commit")
 			}
-			return a.publish(candidate{sha, env("RELEASE_VERSION"), env("RELEASE_TAG")})
+			c := candidate{sha, env("RELEASE_VERSION"), env("RELEASE_TAG")}
+			if err := a.verifyEvidence(c, env("CANDIDATE_REPORT"), env("VALIDATED_SHA")); err != nil {
+				return err
+			}
+			return a.publish(c)
 		}
 		c, _, err := a.releaseCandidate(sha)
 		if args[0] == "select-release" && errors.Is(err, ErrNoReleaseCandidate) {

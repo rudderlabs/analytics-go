@@ -45,6 +45,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
       - name: Check current PR merge ref and eligibility
         id: select
         env:
@@ -71,6 +72,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
       - name: Recheck PR merge SHA before dispatch
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -115,6 +117,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
       - name: Verify result and current merge SHA
         env:
           GITHUB_TOKEN: ${{ github.token }}

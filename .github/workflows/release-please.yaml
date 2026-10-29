@@ -14,6 +14,11 @@ permissions:
 
 jobs:
   release-please:
+    permissions:
+      contents: read
+      pull-requests: read
+    needs: select-release
+    if: always() && (vars.GO_RELEASE_GATE_ENABLED != 'true' || (needs.select-release.result == 'success' && needs.select-release.outputs.release == 'false'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -30,13 +35,25 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
           permission-issues: write
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Hold generation behind any untagged merged release
+        if: vars.GO_RELEASE_GATE_ENABLED == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go run ./cmd/release-gate ensure-no-pending-release
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ steps.generate-token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           target-branch: master
-          skip-github-release: true
+          skip-github-release: ${{ vars.GO_RELEASE_GATE_ENABLED == 'true' }}
 
   select-release:
     # Do not enable before PR #91's exact registry E2E and gated notification are deployed.
@@ -62,6 +79,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
       - name: Identify merged release candidate
         id: candidate
         env:
@@ -69,6 +87,9 @@ jobs:
         run: go run ./cmd/release-gate select-release
 
   validate-release:
+    outputs:
+      report: ${{ steps.e2e.outputs.report }}
+      validated-sha: ${{ steps.e2e.outputs.validated-sha }}
     needs: select-release
     if: needs.select-release.outputs.release == 'true'
     runs-on: ubuntu-latest
@@ -87,6 +108,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
       - name: Recheck master and release identity before full E2E
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -104,10 +126,21 @@ jobs:
           repositories: rudder-sdk-e2e-tests
           permission-actions: write
       - name: Verify delivery and restoration for exact candidate
-        uses: rudderlabs/github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4
+        id: e2e
+        uses: rudderlabs/github-action-sdk-e2e@52dee838836c34c20eb63cd0ea32fb760263b6fb
         with:
           token: ${{ steps.token.outputs.token }}
           suite: full
+
+      - name: Bind verified full evidence to the selected release tree
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ needs.select-release.outputs.sha }}
+          RELEASE_VERSION: ${{ needs.select-release.outputs.version }}
+          RELEASE_TAG: ${{ needs.select-release.outputs.tag }}
+          CANDIDATE_REPORT: ${{ steps.e2e.outputs.report }}
+          VALIDATED_SHA: ${{ steps.e2e.outputs.validated-sha }}
+        run: go run ./cmd/release-gate verify-evidence
 
   publish-release:
     needs: [select-release, validate-release]
@@ -128,6 +161,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
       - name: Recheck identity and master freshness after full validation
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -148,4 +182,6 @@ jobs:
           RELEASE_SHA: ${{ needs.select-release.outputs.sha }}
           RELEASE_VERSION: ${{ needs.select-release.outputs.version }}
           RELEASE_TAG: ${{ needs.select-release.outputs.tag }}
+          CANDIDATE_REPORT: ${{ needs.validate-release.outputs.report }}
+          VALIDATED_SHA: ${{ needs.validate-release.outputs.validated-sha }}
         run: go run ./cmd/release-gate publish

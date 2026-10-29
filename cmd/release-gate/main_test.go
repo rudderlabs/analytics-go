@@ -191,7 +191,9 @@ func TestReleaseCandidateAndPublish(t *testing.T) {
 		case r.URL.Path == "/repos/"+repository+"/branches/master":
 			return 200, map[string]any{"commit": map[string]string{"sha": master}}
 		case strings.HasSuffix(r.URL.Path, "/commits/"+shaA+"/pulls"):
-			return 200, []pull{p}
+			listed := p
+			listed.Merged = false
+			return 200, []pull{listed}
 		case strings.HasSuffix(r.URL.Path, "/pulls/42"):
 			return 200, p
 		case strings.Contains(r.URL.Path, "/contents/"):
@@ -264,7 +266,9 @@ func TestSelectReleaseSkipsOnlyAbsentRelease(t *testing.T) {
 		case strings.HasSuffix(r.URL.Path, "/branches/master"):
 			return 200, map[string]any{"commit": map[string]string{"sha": shaA}}
 		case strings.HasSuffix(r.URL.Path, "/commits/"+shaA+"/pulls"):
-			return 200, []pull{p}
+			listed := p
+			listed.Merged = false
+			return 200, []pull{listed}
 		case strings.HasSuffix(r.URL.Path, "/pulls/42"):
 			return 200, p
 		default:
@@ -305,5 +309,85 @@ func TestReleaseCommandsRejectManualRetry(t *testing.T) {
 		if err == nil {
 			t.Fatal(fmt.Sprint(cmd, " accepted non-master event"))
 		}
+	}
+}
+
+func TestPublicationRequiresVerifiedEvidenceBeforeAnyMutation(t *testing.T) {
+	tree := shaB
+	a, requests := testAPI(t, func(r *http.Request) (int, any) {
+		if r.Method != "GET" || !strings.HasSuffix(r.URL.Path, "/git/commits/"+shaA) {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL)
+		}
+		return 200, map[string]any{"tree": map[string]string{"sha": tree}}
+	})
+	valid := map[string]any{"schema_version": 1, "repository": repository, "commit": shaA,
+		"source_tree": shaB, "module": "github.com/rudderlabs/analytics-go/v4", "version": "4.5.0",
+		"central_run_id": 123, "central_run_attempt": 2, "request_id": "request", "delivery_passed": true,
+		"restoration_verified": true, "lock_released": true}
+	candidate := candidate{shaA, "4.5.0", "v4.5.0"}
+	for _, key := range []string{"repository", "commit", "source_tree", "module", "version", "schema_version",
+		"central_run_id", "central_run_attempt", "delivery_passed", "restoration_verified", "lock_released"} {
+		t.Run(key, func(t *testing.T) {
+			bad := map[string]any{}
+			for k, v := range valid {
+				bad[k] = v
+			}
+			delete(bad, key)
+			body, _ := json.Marshal(bad)
+			if err := a.verifyEvidence(candidate, string(body), shaA); err == nil {
+				t.Fatal("incomplete evidence accepted")
+			}
+		})
+	}
+	body, _ := json.Marshal(valid)
+	if err := a.verifyEvidence(candidate, string(body), shaA); err != nil {
+		t.Fatal(err)
+	}
+	tree = shaA
+	if err := a.verifyEvidence(candidate, string(body), shaA); err == nil {
+		t.Fatal("wrong release tree accepted")
+	}
+	env := map[string]string{"GITHUB_REPOSITORY": repository, "GITHUB_REF": "refs/heads/master", "GITHUB_SHA": shaA,
+		"RELEASE_SHA": shaA, "RELEASE_VERSION": "4.5.0", "RELEASE_TAG": "v4.5.0"}
+	if err := run([]string{"publish"}, a, func(k string) string { return env[k] }); err == nil {
+		t.Fatal("publication without evidence accepted")
+	}
+	for _, request := range *requests {
+		if strings.HasPrefix(request, "POST ") {
+			t.Fatal("missing evidence caused a mutation")
+		}
+	}
+}
+
+func TestPendingReleaseStopsGeneration(t *testing.T) {
+	p := makePR()
+	p.Merged = true
+	p.MergeCommitSHA = shaA
+	p.Labels = []label{{"autorelease: pending"}}
+	tagged := false
+	a, _ := testAPI(t, func(r *http.Request) (int, any) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/pulls"):
+			return 200, []pull{p}
+		case strings.HasSuffix(r.URL.Path, "/pulls/42"):
+			return 200, p
+		case strings.Contains(r.URL.Path, "/contents/"):
+			return 200, map[string]string{"content": base64.StdEncoding.EncodeToString([]byte(`{".":"4.5.0"}`)), "encoding": "base64", "sha": shaB}
+		case strings.HasSuffix(r.URL.Path, "/git/ref/tags/v4.5.0"):
+			if tagged {
+				return 200, map[string]string{"ref": "refs/tags/v4.5.0"}
+			}
+			return 404, nil
+		default:
+			t.Fatalf("unexpected %s", r.URL)
+			return 500, nil
+		}
+	})
+	if err := a.ensureNoPendingRelease(); err == nil {
+		t.Fatal("untagged release allowed another PR")
+	}
+	tagged = true
+	if err := a.ensureNoPendingRelease(); err != nil {
+		t.Fatal(err)
 	}
 }

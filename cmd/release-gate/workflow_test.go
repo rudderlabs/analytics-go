@@ -34,11 +34,11 @@ func TestPublicationDependencyGraph(t *testing.T) {
 	w := workflow(t, "../../.github/workflows/release-please.yaml")
 	jobs := field(t, w, "jobs")
 	pr := field(t, jobs, "release-please")
-	if pr["needs"] != nil {
-		t.Fatal("PR generation depends on validation")
+	if pr["needs"] != "select-release" || !strings.Contains(asString(pr["if"]), "outputs.release == 'false'") {
+		t.Fatal("PR generation must wait for release selection")
 	}
 	steps := pr["steps"].([]any)
-	if field(t, steps[len(steps)-1].(map[any]any), "with")["skip-github-release"] != true {
+	if field(t, steps[len(steps)-1].(map[any]any), "with")["skip-github-release"] != "${{ vars.GO_RELEASE_GATE_ENABLED == 'true' }}" {
 		t.Fatal("Release Please must never create tags")
 	}
 	selectJob := field(t, jobs, "select-release")
@@ -61,7 +61,7 @@ func TestPublicationDependencyGraph(t *testing.T) {
 	var fullAction, publisherWrites, validatorWrites bool
 	for _, raw := range full["steps"].([]any) {
 		step := raw.(map[any]any)
-		if strings.Contains(asString(step["uses"]), "github-action-sdk-e2e@9bcd97f1b28b1f2c3c7726ccae1bf435f4acf9c4") && field(t, step, "with")["suite"] == "full" {
+		if strings.Contains(asString(step["uses"]), "github-action-sdk-e2e@52dee838") && field(t, step, "with")["suite"] == "full" {
 			fullAction = true
 		}
 		if strings.Contains(asString(step["run"]), "publish") {
@@ -90,7 +90,7 @@ func TestGateCommandsHavePinnedGo(t *testing.T) {
 			for _, item := range job["steps"].([]any) {
 				step := item.(map[any]any)
 				if strings.HasPrefix(asString(step["uses"]), "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e") &&
-					field(t, step, "with")["go-version-file"] == "go.mod" {
+					field(t, step, "with")["go-version-file"] == "go.mod" && field(t, step, "with")["cache"] == false {
 					setup = true
 				}
 				if strings.Contains(asString(step["run"]), "go run ./cmd/release-gate") && !setup {
