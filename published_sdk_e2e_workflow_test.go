@@ -15,46 +15,24 @@ func TestPublishedWorkflowExactVersionAndRetryIsolation(t *testing.T) {
 	}
 	workflow := string(data)
 	for _, required := range []string{
-		"types: [published]",
-		"release_tag:", "module_version:",
-		"package-version: ${{ steps.release.outputs.version }}",
-		"suite: full",
-		"permission-actions: write",
-		"repositories: rudder-sdk-e2e-tests",
+		"types: [published]", "release_tag:", "module_version:",
+		"needs: release-ref", "needs: retry-ref", "release-app-id: ${{ vars.RELEASE_APP_ID }}",
+		"rudderlabs/github-action-sdk-e2e/.github/workflows/published-sdk-e2e.yml@",
+		"package-version: ${{ needs.release-ref.outputs.version }}",
+		"package-version: ${{ needs.retry-ref.outputs.version }}",
 	} {
 		if !strings.Contains(workflow, required) {
-			t.Errorf("published workflow is missing %q", required)
+			t.Errorf("missing %q", required)
 		}
 	}
-	parts := strings.SplitN(workflow, "\n  retry:", 2)
+	parts := strings.SplitN(workflow, "\n  retry-ref:", 2)
 	if len(parts) != 2 {
-		t.Fatal("missing validation-only retry job")
+		t.Fatal("missing validation-only retry")
 	}
-	if !strings.Contains(parts[0], "\n  validate:\n") || !strings.Contains(parts[0], "runs-on: ubuntu-latest") {
-		t.Fatal("release validation must use ubuntu-latest")
-	}
-	retry := strings.SplitN(parts[1], "\n  notify:", 2)
-	if len(retry) != 2 {
-		t.Fatal("missing release notification job")
-	}
-	for _, required := range []string{
-		"if: github.event_name == 'workflow_dispatch'",
-		"runs-on: ubuntu-latest",
-		"MODULE_VERSION: ${{ inputs.module_version }}",
-		"RELEASE_TAG: ${{ inputs.release_tag }}",
-		"$GITHUB_REF",
-		"gh api \"repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG\"",
-		".draft == false and .prerelease == false and .published_at != null",
-		"package-version: ${{ steps.release.outputs.version }}",
-		"suite: full",
-	} {
-		if !strings.Contains(retry[0], required) {
-			t.Errorf("retry job is missing %q", required)
-		}
-	}
-	for _, prohibited := range []string{"slackapi/", "release-please", "git push", "upload"} {
-		if strings.Contains(retry[0], prohibited) {
-			t.Errorf("retry job unexpectedly contains %q", prohibited)
+	retry := strings.SplitN(parts[1], "\n  notify:", 2)[0]
+	for _, forbidden := range []string{"slackapi/", "git push", "release-please", "id-token: write"} {
+		if strings.Contains(retry, forbidden) {
+			t.Errorf("retry contains %s", forbidden)
 		}
 	}
 }

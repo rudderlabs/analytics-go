@@ -24,12 +24,12 @@ concurrency:
 
 # Do not cancel live validation; the central workflow owns locking and cleanup.
 jobs:
-  validate:
+  release-ref:
     if: github.event_name == 'release' && !github.event.release.prerelease
     runs-on: ubuntu-latest
     timeout-minutes: 55
     outputs:
-      central_run_url: ${{ steps.e2e.outputs.run-url }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
@@ -47,28 +47,24 @@ jobs:
             exit 1
           fi
           echo "version=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-      - name: Create a central validation token
-        id: token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
-          owner: rudderlabs
-          repositories: rudder-sdk-e2e-tests
-          permission-actions: write
-      - name: Validate the exact public package, delivery, and cleanup
-        id: e2e
-        # SDK-5962. Merge only after the shared action and central published mode are reviewed.
-        uses: rudderlabs/github-action-sdk-e2e@855d3e174e917aab71b93a862c7e74592904d10e
-        with:
-          token: ${{ steps.token.outputs.token }}
-          package-version: ${{ steps.release.outputs.version }}
-          suite: full
 
-  retry:
+  validate:
+    needs: release-ref
+    if: github.event_name == 'release' && !github.event.release.prerelease
+    # SDK-5977. Review and merge shared-action PR #8 before this caller.
+    uses: rudderlabs/github-action-sdk-e2e/.github/workflows/published-sdk-e2e.yml@1f92c84d6836a235604457ca29c02fd1a0d7c874
+    with:
+      package-version: ${{ needs.release-ref.outputs.version }}
+      release-app-id: ${{ vars.RELEASE_APP_ID }}
+    secrets:
+      RELEASE_PRIVATE_KEY: ${{ secrets.RELEASE_PRIVATE_KEY }}
+
+  retry-ref:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 55
+    outputs:
+      version: ${{ steps.release.outputs.version }}
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
@@ -92,21 +88,17 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" |
             jq -e --arg tag "$RELEASE_TAG" '.tag_name == $tag and .draft == false and .prerelease == false and .published_at != null' >/dev/null
           echo "version=$MODULE_VERSION" >> "$GITHUB_OUTPUT"
-      - name: Create a central validation token
-        id: token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
-          owner: rudderlabs
-          repositories: rudder-sdk-e2e-tests
-          permission-actions: write
-      - name: Retry published-module validation only
-        uses: rudderlabs/github-action-sdk-e2e@855d3e174e917aab71b93a862c7e74592904d10e
-        with:
-          token: ${{ steps.token.outputs.token }}
-          package-version: ${{ steps.release.outputs.version }}
-          suite: full
+
+  retry:
+    needs: retry-ref
+    if: github.event_name == 'workflow_dispatch'
+    # SDK-5977. Review and merge shared-action PR #8 before this caller.
+    uses: rudderlabs/github-action-sdk-e2e/.github/workflows/published-sdk-e2e.yml@1f92c84d6836a235604457ca29c02fd1a0d7c874
+    with:
+      package-version: ${{ needs.retry-ref.outputs.version }}
+      release-app-id: ${{ vars.RELEASE_APP_ID }}
+    secrets:
+      RELEASE_PRIVATE_KEY: ${{ secrets.RELEASE_PRIVATE_KEY }}
 
   notify:
     if: always() && github.event_name == 'release' && !github.event.release.prerelease
@@ -126,7 +118,7 @@ jobs:
           RELEASE_DATE: ${{ github.event.release.published_at || github.event.release.created_at }}
           VALIDATION_RESULT: ${{ needs.validate.result }}
           RELEASE_URL: ${{ github.event.release.html_url }}
-          CENTRAL_RUN_URL: ${{ needs.validate.outputs.central_run_url }}
+          CENTRAL_RUN_URL: ${{ needs.validate.outputs.run-url }}
           WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         shell: bash
         run: |
