@@ -16,9 +16,6 @@ jobs:
   release-please:
     permissions:
       contents: read
-      pull-requests: read
-    needs: select-release
-    if: needs.select-release.outputs.release == 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -26,7 +23,8 @@ jobs:
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-      - name: Generate PR-only GitHub App token
+
+      - name: Generate GitHub App Token
         id: generate-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -34,158 +32,10 @@ jobs:
           private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Prepare a fresh PR and retire superseded untagged candidates
-        id: recovery
-        env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-        run: go run ./cmd/release-gate prepare-release-pr
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-          package-manager-cache: false
-      - name: Install the locked release generator
-        run: npm ci --ignore-scripts --prefix scripts/release-please
-      - name: Create or update the release PR from the last published version
-        env:
-          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
-          PUBLISHED_BASELINE: ${{ steps.recovery.outputs.baseline-version }}
-          SUPERSEDED_RELEASES: ${{ steps.recovery.outputs.superseded }}
-        run: npm run release-pr --prefix scripts/release-please
 
-  select-release:
-    # Merge PR #91 first to retain independent registry acceptance and notification.
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      release: ${{ steps.candidate.outputs.release }}
-      sha: ${{ steps.candidate.outputs.sha }}
-      version: ${{ steps.candidate.outputs.version }}
-      tag: ${{ steps.candidate.outputs.tag }}
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Identify merged release candidate
-        id: candidate
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: go run ./cmd/release-gate select-release
-
-  validate-release:
-    outputs:
-      report: ${{ steps.e2e.outputs.report }}
-      validated-sha: ${{ steps.e2e.outputs.validated-sha }}
-    needs: select-release
-    if: needs.select-release.outputs.release == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 55
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Recheck master and release identity before full E2E
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_SHA: ${{ needs.select-release.outputs.sha }}
-          RELEASE_VERSION: ${{ needs.select-release.outputs.version }}
-          RELEASE_TAG: ${{ needs.select-release.outputs.tag }}
-        run: go run ./cmd/release-gate verify-release
-      - name: Full candidate E2E token
-        id: token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
-          owner: rudderlabs
-          repositories: rudder-sdk-e2e-tests
-          permission-actions: write
-      - name: Verify delivery and restoration for exact candidate
-        id: e2e
-        uses: rudderlabs/github-action-sdk-e2e@b6de40cc65abe8ee6c6593aac1787aea746b671f # v1.0.0
-        with:
-          token: ${{ steps.token.outputs.token }}
-          suite: full
-
-      - name: Bind verified full evidence to the selected release tree
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_SHA: ${{ needs.select-release.outputs.sha }}
-          RELEASE_VERSION: ${{ needs.select-release.outputs.version }}
-          RELEASE_TAG: ${{ needs.select-release.outputs.tag }}
-          CANDIDATE_REPORT: ${{ steps.e2e.outputs.report }}
-          VALIDATED_SHA: ${{ steps.e2e.outputs.validated-sha }}
-        run: go run ./cmd/release-gate verify-evidence
-
-  publish-release:
-    needs: [select-release, validate-release]
-    if: needs.select-release.outputs.release == 'true' && needs.select-release.result == 'success' && needs.validate-release.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Recheck identity and master freshness after full validation
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          RELEASE_SHA: ${{ needs.select-release.outputs.sha }}
-          RELEASE_VERSION: ${{ needs.select-release.outputs.version }}
-          RELEASE_TAG: ${{ needs.select-release.outputs.tag }}
-        run: go run ./cmd/release-gate verify-release
-      - name: Create a token for publication and release label completion
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        id: token
-        with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
-          permission-contents: write
-          permission-pull-requests: write
-      - name: Tag validated commit and publish reviewed release notes
-        env:
-          GITHUB_TOKEN: ${{ steps.token.outputs.token }}
-          RELEASE_SHA: ${{ needs.select-release.outputs.sha }}
-          RELEASE_VERSION: ${{ needs.select-release.outputs.version }}
-          RELEASE_TAG: ${{ needs.select-release.outputs.tag }}
-          CANDIDATE_REPORT: ${{ needs.validate-release.outputs.report }}
-          VALIDATED_SHA: ${{ needs.validate-release.outputs.validated-sha }}
-        run: go run ./cmd/release-gate publish
+          token: ${{ steps.generate-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          target-branch: master
