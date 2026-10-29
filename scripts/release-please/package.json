@@ -1,0 +1,11 @@
+{
+  "name": "analytics-go-release-automation",
+  "private": true,
+  "scripts": {
+    "test": "node --test test.cjs",
+    "release-pr": "node index.cjs"
+  },
+  "dependencies": {
+    "release-please": "17.6.0"
+  }
+}

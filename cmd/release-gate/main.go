@@ -328,14 +328,7 @@ func (a githubAPI) releaseCandidate(sha string) (candidate, string, error) {
 	if _, err := a.releasePR(sha); err != nil {
 		return c, "", err
 	}
-	files := make([]string, 4)
-	for i, path := range []string{"go.mod", ".release-please-manifest.json", "analytics.go", "CHANGELOG.md"} {
-		files[i], err = a.file(sha, path)
-		if err != nil {
-			return c, "", err
-		}
-	}
-	v, notes, err := releaseFiles(files[0], files[1], files[2], files[3])
+	v, notes, err := a.releaseMetadata(sha)
 	if err != nil {
 		return c, "", err
 	}
@@ -442,12 +435,24 @@ func (a githubAPI) verifyEvidence(c candidate, report, validatedSHA string) erro
 	return nil
 }
 
-// Block new release PR generation while an earlier merged release remains pending.
-func (a githubAPI) ensureNoPendingRelease() error {
+func (a githubAPI) releaseMetadata(sha string) (string, string, error) {
+	files := make([]string, 4)
+	for i, path := range []string{"go.mod", ".release-please-manifest.json", "analytics.go", "CHANGELOG.md"} {
+		var err error
+		files[i], err = a.file(sha, path)
+		if err != nil {
+			return "", "", err
+		}
+	}
+	return releaseFiles(files[0], files[1], files[2], files[3])
+}
+
+func (a githubAPI) pendingReleases() ([]pull, error) {
+	var pending []pull
 	for page := 1; ; page++ {
 		var prs []pull
 		if err := a.get(fmt.Sprintf("/repos/%s/pulls?state=closed&base=master&sort=updated&direction=desc&per_page=100&page=%d", repository, page), &prs); err != nil {
-			return err
+			return nil, err
 		}
 		for _, listed := range prs {
 			if !hasReleaseLabel(listed.Labels) {
@@ -455,20 +460,133 @@ func (a githubAPI) ensureNoPendingRelease() error {
 			}
 			var detail pull
 			if err := a.get(fmt.Sprintf("/repos/%s/pulls/%d", repository, listed.Number), &detail); err != nil {
-				return err
+				return nil, err
 			}
 			if !detail.Merged {
 				continue
 			}
-			if !isReleasePR(detail) || !shaPattern.MatchString(detail.MergeCommitSHA) {
-				return errors.New("invalid pending release identity")
+			if !hasReleaseLabel(detail.Labels) {
+				continue
 			}
-			return errors.New("a merged release remains pending; complete release creation and labels before another release PR")
+			if detail.Number != listed.Number || !isReleasePR(detail) || !shaPattern.MatchString(detail.MergeCommitSHA) {
+				return nil, errors.New("invalid pending release identity")
+			}
+			pending = append(pending, detail)
 		}
 		if len(prs) < 100 {
-			return nil
+			return pending, nil
 		}
 	}
+}
+
+// A later master push supersedes an untagged candidate, never an existing tag.
+// Release Please then builds a fresh reviewed PR from the last published version.
+func (a githubAPI) prepareReleasePR(sha string) error {
+	master, err := a.masterSHA()
+	if err != nil {
+		return err
+	}
+	if !shaPattern.MatchString(sha) || master != sha {
+		return errors.New("stale release PR generation event")
+	}
+	var published struct {
+		Tag         string `json:"tag_name"`
+		Draft       bool   `json:"draft"`
+		Prerelease  bool   `json:"prerelease"`
+		PublishedAt string `json:"published_at"`
+	}
+	if err := a.get("/repos/"+repository+"/releases/latest", &published); err != nil {
+		return err
+	}
+	baseline := strings.TrimPrefix(published.Tag, "v")
+	if published.Tag != "v"+baseline || !versionPattern.MatchString(baseline) ||
+		!strings.HasPrefix(baseline, "4.") || published.Draft || published.Prerelease || published.PublishedAt == "" {
+		return errors.New("invalid published release baseline")
+	}
+	pending, err := a.pendingReleases()
+	if err != nil {
+		return err
+	}
+	tags := make([]string, len(pending))
+	for i, p := range pending {
+		if p.MergeCommitSHA == sha {
+			return errors.New("current release candidate must finish validation before recovery")
+		}
+		version, _, err := a.releaseMetadata(p.MergeCommitSHA)
+		if err != nil {
+			return err
+		}
+		tags[i] = "v" + version
+		var comparison struct {
+			Status string `json:"status"`
+			Base   struct {
+				SHA string `json:"sha"`
+			} `json:"merge_base_commit"`
+		}
+		if err := a.get("/repos/"+repository+"/compare/"+p.MergeCommitSHA+"..."+sha, &comparison); err != nil {
+			return err
+		}
+		if comparison.Status != "ahead" || comparison.Base.SHA != p.MergeCommitSHA {
+			return errors.New("pending release is not an ancestor of current master")
+		}
+	}
+	// Release Please must replace only unpublished changelog entries. Protect
+	// every entry it will replace, even after a prior generation attempt failed.
+	changelog, err := a.file(sha, "CHANGELOG.md")
+	if err != nil {
+		return err
+	}
+	foundBaseline := false
+	for _, header := range regexp.MustCompile(`(?m)^## \[([0-9]+\.[0-9]+\.[0-9]+)\]\(`).FindAllStringSubmatch(changelog, -1) {
+		if header[1] == baseline {
+			foundBaseline = true
+			break
+		}
+		tags = append(tags, "v"+header[1])
+	}
+	if !foundBaseline {
+		return errors.New("published baseline is missing from changelog")
+	}
+	// Validate the whole plan before removing any label. Recheck each tag and
+	// master immediately before mutation; workflow concurrency serializes writers.
+	for _, tag := range tags {
+		if err := a.requireAbsentTag(tag); err != nil {
+			return err
+		}
+	}
+	for i, p := range pending {
+		current, err := a.masterSHA()
+		if err != nil {
+			return err
+		}
+		if current != sha {
+			return errors.New("master advanced during recovery")
+		}
+		if err := a.requireAbsentTag(tags[i]); err != nil {
+			return err
+		}
+		path := fmt.Sprintf("/repos/%s/issues/%d/labels/autorelease:%%20pending", repository, p.Number)
+		if err := a.write(http.MethodDelete, path, nil, nil, http.StatusOK); err != nil {
+			return err
+		}
+		fmt.Printf("Superseded unpublished release PR #%d at %s; replacement baseline is %s\n", p.Number, p.MergeCommitSHA, published.Tag)
+	}
+	if err := output("superseded", strconv.Itoa(len(pending))); err != nil {
+		return err
+	}
+	return output("baseline-version", baseline)
+}
+
+func (a githubAPI) requireAbsentTag(tag string) error {
+	var ref any
+	err := a.get("/repos/"+repository+"/git/ref/tags/"+tag, &ref)
+	if errors.Is(err, errNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return errors.New("release tag exists; finish its release and label recovery before generating another PR")
 }
 
 func (a githubAPI) publish(c candidate) error {
@@ -565,12 +683,12 @@ func run(args []string, a githubAPI, env func(string) string) error {
 			return nil
 		}
 		return errors.New("candidate validation failed, cancelled or skipped unexpectedly")
-	case "select-release", "verify-release", "verify-evidence", "ensure-no-pending-release", "publish":
+	case "select-release", "verify-release", "verify-evidence", "prepare-release-pr", "publish":
 		if env("GITHUB_REPOSITORY") != repository || env("GITHUB_REF") != "refs/heads/master" {
 			return errors.New("not a master release event")
 		}
-		if args[0] == "ensure-no-pending-release" {
-			return a.ensureNoPendingRelease()
+		if args[0] == "prepare-release-pr" {
+			return a.prepareReleasePR(env("GITHUB_SHA"))
 		}
 		sha := env("GITHUB_SHA")
 		if args[0] != "select-release" {

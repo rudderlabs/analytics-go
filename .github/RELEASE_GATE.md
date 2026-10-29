@@ -1,19 +1,22 @@
 # Go SDK candidate and release validation
 
 Tracked in [SDK-5979](https://linear.app/rudderstack/issue/SDK-5979).
-Merge [PR #91](https://github.com/rudderlabs/analytics-go/pull/91) first. Its
-published-module acceptance and notification remain separate from the source gate.
+Published-module acceptance and notification remain separate from the source gate.
 
 ## One publication path
 
-Release Please generates release PRs with `skip-github-release: true`. It cannot
-create tags or releases. There is no opt-in variable or fallback publisher.
-Merging this workflow changes publication to the gated path.
+The release PR entry point calls only Release Please's `createPullRequests`.
+It cannot create tags or releases. Release Please is locked at 17.6.0, the same
+library version bundled in the previous action. There is no fallback publisher.
 
 A master push selects a merged PR labeled `autorelease: pending`. Selection
 checks the full PR, exact merge commit, module path, manifest, SDK version,
 changelog, and absent release tag. An ordinary commit generates the next release
 PR. Invalid release metadata fails instead of silently skipping the gate.
+Generation uses the latest published stable GitHub release as its version
+baseline. The merged manifest may describe an unpublished candidate and cannot
+establish that baseline. Release Please still calculates versions and release
+notes using the repository's existing configuration.
 
 For a selected release, the full shared action validates the exact source commit.
 The caller pins v1.0.0 at `b6de40cc65abe8ee6c6593aac1787aea746b671f`. The publisher
@@ -25,7 +28,8 @@ Immediately before tag creation, the publisher checks current master again.
 The tag always targets the exact validated SHA. Tag creation publishes the Go
 module. GitHub Release creation follows with the reviewed changelog notes.
 Only after successful release creation does the publisher add `autorelease: tagged`
-and remove `autorelease: pending`. Pending merged releases block new release PRs.
+and remove `autorelease: pending`. An existing tag with incomplete release/label
+state blocks generation until that publication is recovered.
 
 The publication and release-PR tokens need Contents write and Pull requests write.
 Pull requests write authorizes PR label updates; no Issues permission is needed.
@@ -40,26 +44,29 @@ before generating the next release PR.
 
 ## Recovery when master advances before tagging
 
-If master advances during full E2E, publication stops before tag creation.
-The merged release PR stays pending and blocks new release PR generation.
-Rerunning the old candidate cannot release a newer master commit. This is an
-intentional stop; the pending label must not be cleared without a replacement.
+If the full gate fails, publication stops. Merge a separate fix PR into master.
+That push automatically prepares a replacement release PR:
 
-1. Pause other merges to master during recovery and the next full source check.
-2. Confirm that the intended release tag does not exist.
-3. Open a replacement release PR from current master.
-4. Keep the unpublished version aligned in the manifest, SDK constant, and changelog.
-5. Update release notes for commits added after the original candidate.
-6. Apply `autorelease: pending` to the replacement PR through a trusted maintainer.
-7. Link the original and replacement PRs in the release ticket.
-8. Obtain approval and passing native checks on the replacement PR.
-9. Remove `autorelease: pending` from the superseded merged release PR.
-10. Merge the replacement PR.
-11. Wait for its full source check and publication before resuming other merges.
+1. Verify the event is current master and read the last published stable version.
+2. Validate every pending merged release's files and ancestry to current master.
+3. Require each superseded release tag to be absent.
+4. Require all changelog entries newer than the published baseline to be untagged.
+5. Recheck master and tag absence before removing the superseded pending labels.
+6. Generate a new Release Please PR from current master and the published baseline.
+7. Replace unpublished changelog entries with regenerated notes, retaining published history.
 
-The replacement merge SHA becomes a new candidate. It must pass the same full
-E2E and identity checks before publication. Labels alone cannot authorize a tag.
-If the tag already exists, use the post-tag recovery above instead. Do not move it.
+The App-created or updated release PR runs normal PR CI automatically. The
+existing `always-update` configuration refreshes its branch even when a CI-only
+fix does not change release notes. Approval and merge remain required. After
+merge, the replacement commit must pass fresh full E2E and evidence checks before
+the publisher can create its tag. Nothing publishes solely because recovery ran.
+
+If generation fails after clearing superseded labels, rerun the current generation
+workflow or merge the next fix. The published baseline remains authoritative, so
+the next run can rebuild the PR without restoring obsolete pending labels. A tag
+or API error stops recovery; an existing tag always requires the post-tag path.
+No tag is moved, deleted or recreated. A retry of an old validation still tests
+its original commit and cannot publish newer source code.
 
 ## PR candidate check
 

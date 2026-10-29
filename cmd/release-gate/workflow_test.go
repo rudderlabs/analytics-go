@@ -44,8 +44,23 @@ func TestPublicationDependencyGraph(t *testing.T) {
 			assertReleaseTokenPermissions(t, field(t, step, "with"))
 		}
 	}
-	if field(t, steps[len(steps)-1].(map[any]any), "with")["skip-github-release"] != true {
-		t.Fatal("Release Please must never create tags")
+	last := steps[len(steps)-1].(map[any]any)
+	if !strings.Contains(asString(last["run"]), "npm run release-pr") ||
+		!strings.Contains(asString(field(t, last, "env")["PUBLISHED_BASELINE"]), "steps.recovery.outputs.baseline-version") {
+		t.Fatal("Release Please must use the verified published baseline")
+	}
+	prepared := false
+	for _, raw := range steps {
+		step := raw.(map[any]any)
+		if strings.Contains(asString(step["run"]), "prepare-release-pr") {
+			prepared = true
+			if field(t, step, "env")["GITHUB_TOKEN"] != "${{ steps.generate-token.outputs.token }}" {
+				t.Fatal("recovery label removal requires the existing PR-write App token")
+			}
+		}
+		if strings.Contains(asString(step["run"]), "npm run release-pr") && !prepared {
+			t.Fatal("generation must wait for recovery preflight")
+		}
 	}
 	data, err := os.ReadFile("../../.github/workflows/release-please.yaml")
 	if err != nil {

@@ -41,17 +41,23 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Hold generation behind any untagged merged release
+      - name: Prepare a fresh PR and retire superseded untagged candidates
+        id: recovery
         env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: go run ./cmd/release-gate ensure-no-pending-release
-      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+        run: go run ./cmd/release-gate prepare-release-pr
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          token: ${{ steps.generate-token.outputs.token }}
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-          target-branch: master
-          skip-github-release: true
+          node-version: 24
+          package-manager-cache: false
+      - name: Install the locked release generator
+        run: npm ci --ignore-scripts --prefix scripts/release-please
+      - name: Create or update the release PR from the last published version
+        env:
+          GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
+          PUBLISHED_BASELINE: ${{ steps.recovery.outputs.baseline-version }}
+          SUPERSEDED_RELEASES: ${{ steps.recovery.outputs.superseded }}
+        run: npm run release-pr --prefix scripts/release-please
 
   select-release:
     # Merge PR #91 first to retain independent registry acceptance and notification.

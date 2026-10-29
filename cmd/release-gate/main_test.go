@@ -257,7 +257,7 @@ func TestReleaseCandidateAndPublish(t *testing.T) {
 	if err := a.publish(c); err != nil || tagSHA != shaA {
 		t.Fatalf("tag target=%s err=%v", tagSHA, err)
 	}
-	if err := a.ensureNoPendingRelease(); err != nil {
+	if pending, err := a.pendingReleases(); err != nil || len(pending) != 0 {
 		t.Fatalf("completed release blocks the next release cycle: %v", err)
 	}
 	joined := strings.Join(*requests, "\n")
@@ -434,11 +434,11 @@ func TestPendingReleaseStopsGeneration(t *testing.T) {
 			return 500, nil
 		}
 	})
-	if err := a.ensureNoPendingRelease(); err == nil {
+	if pending, err := a.pendingReleases(); err != nil || len(pending) != 1 {
 		t.Fatal("untagged release allowed another PR")
 	}
 	p.Labels = []label{{"autorelease: tagged"}}
-	if err := a.ensureNoPendingRelease(); err != nil {
+	if pending, err := a.pendingReleases(); err != nil || len(pending) != 0 {
 		t.Fatal(err)
 	}
 }
@@ -571,8 +571,8 @@ func TestPendingReleaseScanBeyondOneThousandClosedPRs(t *testing.T) {
 				}
 				return 200, []pull{}
 			})
-			err := a.ensureNoPendingRelease()
-			if (err != nil) != pending || lastPage != 11 {
+			releases, err := a.pendingReleases()
+			if err != nil || (len(releases) > 0) != pending || lastPage != 11 {
 				t.Fatalf("pending=%t lastPage=%d err=%v", pending, lastPage, err)
 			}
 		})
@@ -620,7 +620,7 @@ func TestAdvancedMasterRequiresAReplacementReleaseCandidate(t *testing.T) {
 	if _, _, err := a.releaseCandidate(shaA); err == nil {
 		t.Fatal("stale original candidate accepted")
 	}
-	if err := a.ensureNoPendingRelease(); err == nil {
+	if pending, err := a.pendingReleases(); err != nil || len(pending) != 1 {
 		t.Fatal("pending original allowed release generation")
 	}
 	original.Labels, replaced = nil, true
@@ -628,7 +628,7 @@ func TestAdvancedMasterRequiresAReplacementReleaseCandidate(t *testing.T) {
 	if err != nil || c != (candidate{shaB, "4.5.0", "v4.5.0"}) {
 		t.Fatalf("replacement: %+v %v", c, err)
 	}
-	if err := a.ensureNoPendingRelease(); err == nil {
+	if pending, err := a.pendingReleases(); err != nil || len(pending) != 1 {
 		t.Fatal("replacement must remain pending until publication")
 	}
 	env := map[string]string{"GITHUB_REPOSITORY": repository, "GITHUB_REF": "refs/heads/master", "GITHUB_SHA": shaB,
