@@ -3,81 +3,30 @@ name: Server SDK E2E
 on:
   pull_request:
     branches: [master]
-    types: [opened, reopened, synchronize, edited, ready_for_review, converted_to_draft]
-  push:
-    branches: [master]
-  workflow_dispatch:
-    inputs:
-      suite:
-        description: reliability is local delivery; full also uses a live CI pipeline
-        type: choice
-        options: [reliability, full]
-        default: reliability
+    types: [opened, reopened, synchronize, ready_for_review]
 
 permissions: {}
 
-concurrency:
-  group: go-candidate-${{ github.event.pull_request.number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
+# Central live runs own cleanup and are never cancelled by a newer PR update.
+# A stale candidate fails the shared freshness check; the updated PR gets a new run.
 jobs:
-  select-pr:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      eligible: ${{ steps.select.outputs.eligible }}
-      excluded: ${{ steps.select.outputs.excluded }}
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Check current PR merge ref and eligibility
-        id: select
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: go run ./cmd/release-gate pr-select
-
-  validate:
-    needs: select-pr
+  go-sdk-candidate-gate:
+    name: Go SDK candidate gate
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]' &&
-      github.actor != 'dependabot[bot]' && needs.select-pr.outputs.eligible == 'true'
+      github.actor != 'dependabot[bot]' &&
+      startsWith(github.head_ref, 'release-please--')
     runs-on: ubuntu-latest
     timeout-minutes: 55
     permissions:
       contents: read
-      pull-requests: read
     steps:
       - name: Harden the runner (Audit all outbound calls)
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Recheck PR merge SHA before dispatch
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: go run ./cmd/release-gate pr-check
+      # Do not check out or execute PR code in this credential-bearing job.
       - name: Create a central validation token
         id: token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -87,68 +36,8 @@ jobs:
           owner: rudderlabs
           repositories: rudder-sdk-e2e-tests
           permission-actions: write
-      - name: Validate current PR candidate in isolated reliability mode
-        uses: rudderlabs/github-action-sdk-e2e@b6de40cc65abe8ee6c6593aac1787aea746b671f # v1.0.0
+      - name: Validate the candidate through the shared harness
+        uses: rudderlabs/github-action-sdk-e2e@0c79ac9ee74a9b1732d66874aa403062a31b0c26 # SDK-6013; merge dependency before this caller.
         with:
           token: ${{ steps.token.outputs.token }}
-          suite: reliability
-      - name: Recheck PR merge SHA after validation
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: go run ./cmd/release-gate pr-check
-
-  go-sdk-candidate-gate:
-    name: Go SDK candidate gate
-    if: always() && github.event_name == 'pull_request'
-    needs: [select-pr, validate]
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Verify result and current merge SHA
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          SELECT_RESULT: ${{ needs.select-pr.result }}
-          VALIDATE_RESULT: ${{ needs.validate.result }}
-          ELIGIBLE: ${{ needs.select-pr.outputs.eligible }}
-          EXCLUDED: ${{ needs.select-pr.outputs.excluded }}
-        run: go run ./cmd/release-gate pr-gate
-
-  # Manual and push validation cannot publish. Published acceptance is separate.
-  validate-other:
-    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 55
-    steps:
-      - name: Harden the runner (Audit all outbound calls)
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
-        with:
-          egress-policy: audit
-      - name: Create a central validation token
-        id: token
-        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
-        with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_PRIVATE_KEY }}
-          owner: rudderlabs
-          repositories: rudder-sdk-e2e-tests
-          permission-actions: write
-      - name: Validate without publication
-        uses: rudderlabs/github-action-sdk-e2e@b6de40cc65abe8ee6c6593aac1787aea746b671f # v1.0.0
-        with:
-          token: ${{ steps.token.outputs.token }}
-          suite: ${{ inputs.suite || vars.SDK_E2E_SUITE || 'reliability' }}
+          suite: full
