@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.4.1](https://github.com/rudderlabs/analytics-go/compare/v4.4.0...v4.4.1) (2026-10-30)
+
+
+### Bug Fixes
+
+* use supported release app permissions ([#93](https://github.com/rudderlabs/analytics-go/issues/93)) ([7744726](https://github.com/rudderlabs/analytics-go/commit/7744726866f42c2cfccbd9c68add3bf5acd18010))
+
 ## [4.4.0](https://github.com/rudderlabs/analytics-go/compare/v4.3.1...v4.4.0) (2026-10-26)
 
 
