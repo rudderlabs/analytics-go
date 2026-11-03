@@ -319,7 +319,7 @@ func TestBeforeEnqueueConformance(t *testing.T) {
 		{id: "restore_context_library", hook: editHook(func(tr *Track) { tr.Context.Library = LibraryInfo{} })},
 		{id: "keep_messageid_change", hook: editHook(func(tr *Track) { tr.MessageId = "m2" })},
 		{id: "restore_removed_messageid", hook: editHook(func(tr *Track) { tr.MessageId = "" })},
-		{id: "post_hook_oversize_warns", hook: editHook(func(tr *Track) { tr.Properties["large"] = strings.Repeat("x", defMaxMessageBytes) })},
+		{id: "post_hook_oversize_normal_handling", hook: editHook(func(tr *Track) { tr.Properties["large"] = strings.Repeat("x", defMaxMessageBytes) })},
 		{id: "cyclic_output_hook_error", hook: editHook(func(tr *Track) { tr.Properties["self"] = tr.Properties })},
 		{id: "once_across_retries"},
 		{id: "no_hook_unchanged"},
@@ -369,7 +369,7 @@ func TestBeforeEnqueueConformance(t *testing.T) {
 				wantWarnings = 1
 			case "keep_messageid_change":
 				want[0]["messageId"] = "m2"
-			case "post_hook_oversize_warns":
+			case "post_hook_oversize_normal_handling":
 				// Go rejects oversize through the normal queue, unlike Node's warning-and-send path.
 				if r.err != nil || len(r.wire) != 0 || len(r.failures) != 1 || r.failures[0] != ErrMessageTooBig || hookLogCount(r.log.errors, "beforeEnqueue failed") != 0 || hookLogCount(r.log.errors, ErrMessageTooBig.Error()) != 1 {
 					t.Fatal("normal Go size handling changed")
