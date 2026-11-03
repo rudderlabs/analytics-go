@@ -263,6 +263,13 @@ func (c *client) Enqueue(msg Message) (err error) {
 		return
 	}
 
+	if c.BeforeEnqueue != nil {
+		var ok bool
+		if msg, ok = c.beforeEnqueue(msg); !ok {
+			return
+		}
+	}
+
 	defer func() {
 		// When the `msgs` channel is closed writing to it will trigger a panic.
 		// To avoid letting the panic propagate to the caller we recover from it
@@ -453,7 +460,7 @@ func (c *client) send(msgs []message, retryAttempt int) {
 	for i := range msgs {
 		err := msgs[i].setSentAt(ts)
 		if err != nil {
-			c.errorf("%s - %v", err, msgs[i].msg)
+			c.errorf("%s - %T messageId=%s", marshalFailure(err), msgs[i].msg, messageIdOf(msgs[i].msg))
 			c.notifyFailure([]message{msgs[i]}, err)
 		}
 	}
@@ -664,12 +671,12 @@ func (c *client) push(q *messageQueue, m Message, wg *sync.WaitGroup, ex *execut
 	var err error
 
 	if msg, err = makeMessage(m, c.MaxMessageBytes); err != nil {
-		c.errorf("%s - %v", err, m)
+		c.errorf("%s - %T messageId=%s bytes=%d", marshalFailure(err), m, messageIdOf(m), len(msg.json))
 		c.notifyFailure([]message{{m, nil}}, err)
 		return
 	}
 
-	c.debugf("buffer (%d/%d) %v", len(q.pending), c.BatchSize, m)
+	c.debugf("buffer (%d/%d) %T messageId=%s", len(q.pending), c.BatchSize, m, messageIdOf(m))
 
 	if msgs := q.push(msg); msgs != nil {
 		c.debugf("exceeded messages batch limit with batch of %d messages – flushing", len(msgs))

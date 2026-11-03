@@ -1,9 +1,9 @@
 package analytics
 
 import (
+	"fmt"
 	"net/http"
 	"time"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/segmentio/backo-go"
@@ -98,6 +98,24 @@ type Config struct {
 
 	// Disable/enable gzip support.
 	DisableGzip bool
+
+	// BeforeEnqueue is called once per event inside Enqueue, after the client
+	// sets type, messageId, timestamps, context and channel, and before the
+	// event is queued. It receives its own deep copy of the message. Return the
+	// (possibly edited) message of the same type to send it, or nil to drop it.
+	// SentAt is provisional and is overwritten when the batch is sent.
+	// The client restores messageId, context.library and channel after the hook.
+	// It runs on the caller's goroutine, so it must be safe for concurrent use.
+	// Values reachable only through unexported fields of user structs stay shared.
+	// A typed nil message pointer also drops the event, without delivery callbacks.
+	BeforeEnqueue func(Message) Message
+
+	// BeforeEnqueueOnError selects what happens to an event when
+	// BeforeEnqueue panics, changes the message type, returns a message that
+	// fails validation or exceeds MaxMessageBytes, or the message holds a value
+	// that cannot be copied (chan, func, unsafe.Pointer) or serialized.
+	// Defaults to BeforeEnqueueOnErrorSend. Hook errors do not call Callback.Failure.
+	BeforeEnqueueOnError BeforeEnqueueErrorPolicy
 }
 
 // This constant sets the default endpoint to which client instances send
@@ -146,8 +164,8 @@ func (c *Config) validate() error {
 				"MaxMessageBytes cannot exceed %d bytes hard limit",
 				maxHardLimitBytes,
 			),
-			Field:  "MaxMessageBytes",
-			Value:  c.MaxMessageBytes,
+			Field: "MaxMessageBytes",
+			Value: c.MaxMessageBytes,
 		}
 	}
 
@@ -165,8 +183,16 @@ func (c *Config) validate() error {
 				"MaxBatchBytes cannot exceed %d bytes hard limit",
 				maxHardLimitBytes,
 			),
-			Field:  "MaxBatchBytes",
-			Value:  c.MaxBatchBytes,
+			Field: "MaxBatchBytes",
+			Value: c.MaxBatchBytes,
+		}
+	}
+
+	if c.BeforeEnqueueOnError != BeforeEnqueueOnErrorSend && c.BeforeEnqueueOnError != BeforeEnqueueOnErrorDrop {
+		return ConfigError{
+			Reason: "unknown BeforeEnqueueOnError policy",
+			Field:  "BeforeEnqueueOnError",
+			Value:  c.BeforeEnqueueOnError,
 		}
 	}
 

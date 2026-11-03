@@ -152,6 +152,36 @@ client, _ := analytics.NewWithConfig(WRITE_KEY,
 | Note: Gzip requires `rudder-server` version 1.4 or later. |
 | :-----|
 
+## Editing or dropping events before enqueue
+
+Set `BeforeEnqueue` to edit or drop events before they are queued. The hook runs once per event inside `Enqueue`, on the caller's goroutine, and receives its own copy of the message. Return the message to send it, or `nil` to drop it.
+
+```go
+client, _ := analytics.NewWithConfig(WRITE_KEY,
+		analytics.Config{
+			DataPlaneUrl: DATA_PLANE_URL,
+			BeforeEnqueue: func(m analytics.Message) analytics.Message {
+				if t, ok := m.(analytics.Track); ok {
+					if strings.HasPrefix(t.Event, "debug_") {
+						return nil // drop
+					}
+					delete(t.Properties, "email") // redact
+					return t
+				}
+				return m
+			},
+			// If the hook panics or returns an invalid message, drop the event
+			// instead of sending the unredacted original (the default).
+			BeforeEnqueueOnError: analytics.BeforeEnqueueOnErrorDrop,
+		})
+```
+
+The SDK restores `messageId`, `context.library` and `channel` after the hook. Returning a different message type, a message that fails validation, or one larger than `MaxMessageBytes` is treated as a hook error. The hook gets a deep copy of the SDK's message data; values inside your own structs' unexported fields are shared.
+
+The hook sees the enriched event, including wrapper context and timestamps. `SentAt` equals `OriginalTimestamp` in the hook and is overwritten at send time. Hooks must be safe for concurrent calls. A typed nil message pointer also drops the event; drops and hook errors do not call `Callback.Failure`. Uncopyable values (`chan`, `func`, `unsafe.Pointer`) and serialization failures follow `BeforeEnqueueOnError`, which defaults to sending the untouched original. Without a hook, the SDK does not copy events.
+
+SDK logs omit event payloads and panic messages. Avoid panicking with event data: runtime-controlled panic output is outside SDK logging. `runtime.Goexit` retains its normal behavior.
+
 ## Sending events
 
 Refer to the [RudderStack Go SDK documentation](https://www.rudderstack.com/docs/sources/event-streams/sdks/rudderstack-go-sdk/) for more information on the supported event types.
