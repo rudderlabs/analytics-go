@@ -176,11 +176,13 @@ client, _ := analytics.NewWithConfig(WRITE_KEY,
 		})
 ```
 
-The SDK restores `messageId`, `context.library` and `channel` after the hook. Returning a different message type, a message that fails validation, or one larger than `MaxMessageBytes` is treated as a hook error. The hook gets a deep copy of the SDK's message data; values inside your own structs' unexported fields are shared.
+The hook receives a deep copy of the enriched event before validation, so it can fix an invalid call. It may change the message type, IDs, properties, traits and timestamps. The SDK restores `channel` and `context.library`, logging one warning through `Logger.Logf` if either changed. A changed `messageId` is kept; an empty one is restored silently. `SentAt` equals `OriginalTimestamp` in the hook and is overwritten at send time.
 
-The hook sees the enriched event, including wrapper context and timestamps. `SentAt` equals `OriginalTimestamp` in the hook and is overwritten at send time. Hooks must be safe for concurrent calls. A typed nil message pointer also drops the event; drops and hook errors do not call `Callback.Failure`. Uncopyable values (`chan`, `func`, `unsafe.Pointer`) and serialization failures follow `BeforeEnqueueOnError`, which defaults to sending the untouched original. Without a hook, the SDK does not copy events.
+Return `nil` (including a typed nil SDK message pointer) to drop the event with one debug log and no delivery callbacks. Panics, unsupported message results and normal validation or serialization failures are logged with their original error text. `BeforeEnqueueOnError` defaults to validating and sending the untouched original; `BeforeEnqueueOnErrorDrop` drops it. Hook errors do not call `Callback.Failure`; errors validating the original surface normally from `Enqueue`.
 
-SDK logs omit event payloads and panic messages. Avoid panicking with event data: runtime-controlled panic output is outside SDK logging. `runtime.Goexit` retains its normal behavior.
+Oversized results use Go's existing size handling: they are rejected by the queue with `ErrMessageTooBig`, the usual error log and `Callback.Failure`. Oversize is not a hook error and does not trigger the send/drop policy.
+
+Hooks run once per event, including across retries, and must be safe for concurrent calls. Go's typed hook signature prevents non-function configuration; custom `Message` implementations that are not SDK messages are rejected. Inputs must be acyclic; values in application structs' unexported fields stay shared. Results are not defensively copied or JSON round-tripped.
 
 ## Sending events
 

@@ -192,8 +192,10 @@ func dereferenceMessage(msg Message) Message {
 
 func (c *client) Enqueue(msg Message) (err error) {
 	msg = dereferenceMessage(msg)
-	if err = msg.Validate(); err != nil {
-		return
+	if c.BeforeEnqueue == nil {
+		if err = msg.Validate(); err != nil {
+			return
+		}
 	}
 
 	id := c.uid()
@@ -264,8 +266,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 	}
 
 	if c.BeforeEnqueue != nil {
-		var ok bool
-		if msg, ok = c.beforeEnqueue(msg); !ok {
+		if msg, err = c.beforeEnqueue(msg); err != nil || msg == nil {
 			return
 		}
 	}
@@ -347,7 +348,7 @@ func (c *client) sendAsync(msgs []message, wg *sync.WaitGroup, ex *executor) {
 			// a panic, we don't want this to ever crash the application so we
 			// catch it here and log it instead.
 			if err := recover(); err != nil {
-				c.errorf("sending messages panicked: %T", err)
+				c.errorf("panic - %s", err)
 			}
 		}()
 		c.send(msgs, 0)
@@ -460,7 +461,7 @@ func (c *client) send(msgs []message, retryAttempt int) {
 	for i := range msgs {
 		err := msgs[i].setSentAt(ts)
 		if err != nil {
-			c.errorf("%s - %T messageId=%s", marshalFailure(err), msgs[i].msg, messageIdOf(msgs[i].msg))
+			c.errorf("%s - %v", err, msgs[i].msg)
 			c.notifyFailure([]message{msgs[i]}, err)
 		}
 	}
@@ -568,7 +569,7 @@ func (c *client) upload(b []byte, targetNode string) error {
 
 	res, err := c.http.Do(req)
 	if err != nil {
-		c.errorf("sending request failed: %T", err)
+		c.errorf("sending request - %s", err)
 		return err
 	}
 
@@ -578,8 +579,9 @@ func (c *client) upload(b []byte, targetNode string) error {
 
 // Report on response body.
 func (c *client) report(res *http.Response) (err error) {
+	var body []byte
 	if res.StatusCode < 300 {
-		c.debugf("response %d", res.StatusCode)
+		c.debugf("response %s", res.Status)
 		return
 	}
 
@@ -587,12 +589,12 @@ func (c *client) report(res *http.Response) (err error) {
 		return errors.New(strconv.Itoa(res.StatusCode))
 	}
 
-	if _, err = io.ReadAll(res.Body); err != nil {
-		c.errorf("reading response failed: status=%d error=%T", res.StatusCode, err)
+	if body, err = io.ReadAll(res.Body); err != nil {
+		c.errorf("response %d %s - %s", res.StatusCode, res.Status, err)
 		return
 	}
 
-	c.logf("response %d", res.StatusCode)
+	c.logf("response %d %s – %s", res.StatusCode, res.Status, string(body))
 	return fmt.Errorf("%d %s", res.StatusCode, res.Status)
 }
 
@@ -670,12 +672,12 @@ func (c *client) push(q *messageQueue, m Message, wg *sync.WaitGroup, ex *execut
 	var err error
 
 	if msg, err = makeMessage(m, c.MaxMessageBytes); err != nil {
-		c.errorf("%s - %T messageId=%s bytes=%d", marshalFailure(err), m, messageIdOf(m), len(msg.json))
+		c.errorf("%s - %v", err, m)
 		c.notifyFailure([]message{{m, nil}}, err)
 		return
 	}
 
-	c.debugf("buffer (%d/%d) %T messageId=%s", len(q.pending), c.BatchSize, m, messageIdOf(m))
+	c.debugf("buffer (%d/%d) %v", len(q.pending), c.BatchSize, m)
 
 	if msgs := q.push(msg); msgs != nil {
 		c.debugf("exceeded messages batch limit with batch of %d messages – flushing", len(msgs))

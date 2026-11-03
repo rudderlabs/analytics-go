@@ -99,22 +99,19 @@ type Config struct {
 	// Disable/enable gzip support.
 	DisableGzip bool
 
-	// BeforeEnqueue is called once per event inside Enqueue, after the client
-	// sets type, messageId, timestamps, context and channel, and before the
-	// event is queued. It receives its own deep copy of the message. Return the
-	// (possibly edited) message of the same type to send it, or nil to drop it.
-	// SentAt is provisional and is overwritten when the batch is sent.
-	// The client restores messageId, context.library and channel after the hook.
-	// It runs on the caller's goroutine, so it must be safe for concurrent use.
-	// Values reachable only through unexported fields of user structs stay shared.
-	// A typed nil message pointer also drops the event, without delivery callbacks.
+	// BeforeEnqueue runs synchronously once on a deep copy of the enriched
+	// event, before validation and enqueue. Return an SDK message to send it,
+	// or nil to drop it without delivery callbacks. It may fix an invalid call.
+	// Channel and context.library are restored; an empty messageId is restored.
+	// SentAt is provisional and is overwritten at send time.
+	// Hooks must be safe for concurrent calls. Inputs must be acyclic;
+	// unexported fields of application structs remain shared.
 	BeforeEnqueue func(Message) Message
 
-	// BeforeEnqueueOnError selects what happens to an event when
-	// BeforeEnqueue panics, changes the message type, returns a message that
-	// fails validation or exceeds MaxMessageBytes, or the message holds a value
-	// that cannot be copied (chan, func, unsafe.Pointer) or serialized.
-	// Defaults to BeforeEnqueueOnErrorSend. Hook errors do not call Callback.Failure.
+	// BeforeEnqueueOnError selects send (default) or drop for panics and invalid
+	// results, including serialization errors. Hook errors are logged as-is and
+	// do not call Callback.Failure. Send validates the original event normally.
+	// Oversize uses the normal queue handling, independent of this policy.
 	BeforeEnqueueOnError BeforeEnqueueErrorPolicy
 }
 
