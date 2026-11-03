@@ -347,7 +347,7 @@ func (c *client) sendAsync(msgs []message, wg *sync.WaitGroup, ex *executor) {
 			// a panic, we don't want this to ever crash the application so we
 			// catch it here and log it instead.
 			if err := recover(); err != nil {
-				c.errorf("panic - %s", err)
+				c.errorf("sending messages panicked: %T", err)
 			}
 		}()
 		c.send(msgs, 0)
@@ -568,7 +568,7 @@ func (c *client) upload(b []byte, targetNode string) error {
 
 	res, err := c.http.Do(req)
 	if err != nil {
-		c.errorf("sending request - %s", err)
+		c.errorf("sending request failed: %T", err)
 		return err
 	}
 
@@ -578,9 +578,8 @@ func (c *client) upload(b []byte, targetNode string) error {
 
 // Report on response body.
 func (c *client) report(res *http.Response) (err error) {
-	var body []byte
 	if res.StatusCode < 300 {
-		c.debugf("response %s", res.Status)
+		c.debugf("response %d", res.StatusCode)
 		return
 	}
 
@@ -588,12 +587,12 @@ func (c *client) report(res *http.Response) (err error) {
 		return errors.New(strconv.Itoa(res.StatusCode))
 	}
 
-	if body, err = io.ReadAll(res.Body); err != nil {
-		c.errorf("response %d %s - %s", res.StatusCode, res.Status, err)
+	if _, err = io.ReadAll(res.Body); err != nil {
+		c.errorf("reading response failed: status=%d error=%T", res.StatusCode, err)
 		return
 	}
 
-	c.logf("response %d %s – %s", res.StatusCode, res.Status, string(body))
+	c.logf("response %d", res.StatusCode)
 	return fmt.Errorf("%d %s", res.StatusCode, res.Status)
 }
 

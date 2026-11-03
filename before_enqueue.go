@@ -101,6 +101,11 @@ func (c *client) prepareBeforeEnqueue(msg Message) (Message, error) {
 	}
 
 	// Oversize is a hook error so the policy, not push, decides the outcome.
+	// Context.MarshalJSON starts a fresh encoder, so encoding/json alone
+	// cannot detect cycles that cross Context boundaries.
+	if hasCycle(reflect.ValueOf(out), map[copyKey]uint8{}) {
+		return nil, errors.New("hook output contains a cycle")
+	}
 	b, err := json.Marshal(out)
 	if err != nil {
 		return nil, errors.New(marshalFailure(err))
@@ -204,6 +209,52 @@ type copyKey struct {
 	typ reflect.Type
 }
 
+// hasCycle tracks active and completed references separately, allowing shared
+// acyclic data. Inspect exported fields, including map keys, without invoking
+// application serializers.
+func hasCycle(v reflect.Value, seen map[copyKey]uint8) bool {
+	switch v.Kind() {
+	case reflect.Interface:
+		return !v.IsNil() && hasCycle(v.Elem(), seen)
+	case reflect.Ptr, reflect.Map, reflect.Slice:
+		if v.IsNil() {
+			return false
+		}
+		k := copyKey{ptr: v.Pointer(), typ: v.Type()}
+		if v.Kind() == reflect.Slice {
+			k.len = v.Len()
+		}
+		if state := seen[k]; state != 0 {
+			return state == 1
+		}
+		seen[k] = 1
+		defer func() { seen[k] = 2 }()
+	}
+	switch v.Kind() {
+	case reflect.Ptr:
+		return hasCycle(v.Elem(), seen)
+	case reflect.Map:
+		for it := v.MapRange(); it.Next(); {
+			if hasCycle(it.Key(), seen) || hasCycle(it.Value(), seen) {
+				return true
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for i := 0; i < v.Len(); i++ {
+			if hasCycle(v.Index(i), seen) {
+				return true
+			}
+		}
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			if v.Type().Field(i).PkgPath == "" && hasCycle(v.Field(i), seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func deepCopyValue(src reflect.Value, seen map[copyKey]reflect.Value) (reflect.Value, error) {
 	switch src.Kind() {
 	case reflect.Chan, reflect.Func, reflect.UnsafePointer:
@@ -237,11 +288,15 @@ func deepCopyValue(src reflect.Value, seen map[copyKey]reflect.Value) (reflect.V
 		dst := reflect.MakeMapWithSize(src.Type(), src.Len())
 		seen[k] = dst
 		for it := src.MapRange(); it.Next(); {
+			key, err := deepCopyValue(it.Key(), seen)
+			if err != nil {
+				return src, err
+			}
 			e, err := deepCopyValue(it.Value(), seen)
 			if err != nil {
 				return src, err
 			}
-			dst.SetMapIndex(it.Key(), e)
+			dst.SetMapIndex(key, e)
 		}
 		return dst, nil
 

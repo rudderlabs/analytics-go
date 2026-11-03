@@ -7,8 +7,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"os/exec"
 	"reflect"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1094,6 +1097,10 @@ func TestBeforeEnqueuePerTypeConformance(t *testing.T) {
 			Group{UserId: tr.UserId, AnonymousId: tr.AnonymousId, GroupId: "g1", Traits: Traits{"marker": beforeEnqueueMarker}, Context: tr.Context, MessageId: "m1", OriginalTimestamp: tr.OriginalTimestamp},
 			func(m Message) Message { g := m.(Group); g.GroupId = ""; return g },
 		},
+		"group_identity": {
+			Group{UserId: tr.UserId, AnonymousId: tr.AnonymousId, GroupId: "g1", Traits: Traits{"marker": beforeEnqueueMarker}, Context: tr.Context, MessageId: "m1", OriginalTimestamp: tr.OriginalTimestamp},
+			func(m Message) Message { g := m.(Group); g.UserId, g.AnonymousId = "", ""; return g },
+		},
 		"required_alias_field": {
 			Alias{UserId: tr.UserId, PreviousId: "previous-1", Context: tr.Context, MessageId: "m1", OriginalTimestamp: tr.OriginalTimestamp},
 			func(m Message) Message { a := m.(Alias); a.PreviousId = ""; return a },
@@ -1123,7 +1130,10 @@ func TestBeforeEnqueuePerTypeConformance(t *testing.T) {
 					t.Fatal(err)
 				}
 				baseline.Close()
-				c, sent, log := newBeforeEnqueueWireClient(t, Config{BeforeEnqueue: tt.hook, BeforeEnqueueOnError: policy, Callback: failOnCallback(t)})
+				var successes, failures int
+				c, sent, log := newBeforeEnqueueWireClient(t, Config{BeforeEnqueue: tt.hook, BeforeEnqueueOnError: policy,
+					Callback: testCallback{func(Message) { successes++ }, func(Message, error) { failures++ }},
+				})
 				if err := c.Enqueue(tt.msg); err != nil {
 					t.Fatal(err)
 				}
@@ -1133,6 +1143,9 @@ func TestBeforeEnqueuePerTypeConformance(t *testing.T) {
 					want = nil
 				}
 				assertBeforeEnqueueRequests(t, sent(), want, log)
+				if successes != len(want) || failures != 0 {
+					t.Fatalf("callbacks: success=%d failure=%d", successes, failures)
+				}
 				if !log.has(log.errors, "beforeEnqueue failed") {
 					t.Error("missing validation error")
 				}
@@ -1245,4 +1258,183 @@ func TestBeforeEnqueueWrappedMarshalErrorNotLogged(t *testing.T) {
 	c.Enqueue(msg)
 	c.Close()
 	assertBeforeEnqueueRequests(t, sent(), nil, log)
+}
+
+// Run the fatal-stack regression in a child so both policies can be checked.
+func TestBeforeEnqueueContextCycleOutput(t *testing.T) {
+	for _, policy := range []BeforeEnqueueErrorPolicy{BeforeEnqueueOnErrorSend, BeforeEnqueueOnErrorDrop} {
+		t.Run(fmt.Sprintf("policy=%d", policy), func(t *testing.T) {
+			if os.Getenv("SDK6052_CYCLE_CHILD") == "" {
+				executable, err := os.Executable()
+				if err != nil {
+					t.Fatal(err)
+				}
+				// #nosec G204 -- runs this test binary with a fixed test name and policy constants.
+				cmd := exec.Command(executable, "-test.run=^TestBeforeEnqueueContextCycleOutput$/^"+fmt.Sprintf("policy=%d", policy)+"$")
+				cmd.Env = append(os.Environ(), "SDK6052_CYCLE_CHILD=1")
+				output, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("cycle child failed: %v\n%.2000s", err, output)
+				}
+				return
+			}
+			debug.SetMaxStack(256 << 10)
+			baseline, baselineSent, _ := newBeforeEnqueueWireClient(t, Config{})
+			baseline.Enqueue(beforeEnqueueFixtureTrack())
+			baseline.Close()
+			successes, failures := 0, 0
+			c, sent, log := newBeforeEnqueueWireClient(t, Config{
+				BeforeEnqueue: func(m Message) Message {
+					tr := m.(Track)
+					tr.Context.Extra["self"] = tr.Context
+					return tr
+				}, BeforeEnqueueOnError: policy,
+				Callback: testCallback{func(Message) { successes++ }, func(Message, error) { failures++ }},
+			})
+			if err := c.Enqueue(beforeEnqueueFixtureTrack()); err != nil {
+				t.Fatal(err)
+			}
+			c.Close()
+			want, wantSuccess := baselineSent(), 1
+			if policy == BeforeEnqueueOnErrorDrop {
+				want, wantSuccess = nil, 0
+			}
+			assertBeforeEnqueueRequests(t, sent(), want, log)
+			if successes != wantSuccess || failures != 0 {
+				t.Fatalf("callbacks: success=%d failure=%d", successes, failures)
+			}
+			if !log.has(log.errors, "beforeEnqueue failed") {
+				t.Error("missing hook error")
+			}
+		})
+	}
+}
+
+func TestBeforeEnqueueSharedContextOutput(t *testing.T) {
+	msg := beforeEnqueueFixtureTrack()
+	shared := &Context{Extra: map[string]interface{}{"marker": beforeEnqueueMarker}}
+	msg.Properties["a"], msg.Properties["b"] = shared, shared
+	baseline, baselineSent, _ := newBeforeEnqueueWireClient(t, Config{})
+	baseline.Enqueue(msg)
+	baseline.Close()
+	c, sent, log := newBeforeEnqueueWireClient(t, Config{BeforeEnqueue: func(m Message) Message { return m }, Callback: failOnCallback(t)})
+	if err := c.Enqueue(msg); err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+	assertBeforeEnqueueRequests(t, sent(), baselineSent(), log)
+	if len(log.errors) != 0 {
+		t.Fatal("shared acyclic context rejected")
+	}
+}
+
+type beforeEnqueueTextKey struct{ Text string }
+
+func (k *beforeEnqueueTextKey) MarshalText() ([]byte, error) { return []byte(k.Text), nil }
+
+func TestBeforeEnqueueMapKeyMutateThenPanic(t *testing.T) {
+	key := &beforeEnqueueTextKey{Text: "original"}
+	msg := beforeEnqueueFixtureTrack()
+	msg.Properties["keyed"] = map[*beforeEnqueueTextKey]interface{}{key: key}
+	baseline, baselineSent, _ := newBeforeEnqueueWireClient(t, Config{})
+	baseline.Enqueue(msg)
+	baseline.Close()
+	c, sent, log := newBeforeEnqueueWireClient(t, Config{BeforeEnqueue: func(m Message) Message {
+		for k, v := range m.(Track).Properties["keyed"].(map[*beforeEnqueueTextKey]interface{}) {
+			if k != v {
+				t.Error("key/value alias lost")
+			}
+			k.Text = "mutated"
+		}
+		panic(beforeEnqueueMarker)
+	}, Callback: failOnCallback(t)})
+	if err := c.Enqueue(msg); err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+	assertBeforeEnqueueRequests(t, sent(), baselineSent(), log)
+	if key.Text != "original" {
+		t.Error("caller map key mutated")
+	}
+	if !log.has(log.errors, "beforeEnqueue failed") {
+		t.Error("missing hook error")
+	}
+}
+
+type beforeEnqueueLeakyReader struct{ err error }
+
+func (r beforeEnqueueLeakyReader) Read([]byte) (int, error) { return 0, r.err }
+func (r beforeEnqueueLeakyReader) Close() error             { return nil }
+
+func TestNoPayloadInLogsSendFailures(t *testing.T) {
+	for _, hooked := range []bool{false, true} {
+		for _, site := range []string{"panic", "transport", "response", "response_read", "success_status"} {
+			t.Run(fmt.Sprintf("%s/hooked=%t", site, hooked), func(t *testing.T) {
+				original := errors.New(beforeEnqueueMarker)
+				var hook func(Message) Message
+				if hooked {
+					hook = func(m Message) Message { return m }
+				}
+				failures := make(chan error, 1)
+				successes := make(chan struct{}, 1)
+				c, sent, log := newBeforeEnqueueWireClient(t, Config{
+					BeforeEnqueue: hook,
+					Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+						switch site {
+						case "panic":
+							panic(beforeEnqueueMarker)
+						case "transport":
+							return nil, original
+						case "response_read":
+							return &http.Response{StatusCode: 400, Status: "400 " + beforeEnqueueMarker, Body: beforeEnqueueLeakyReader{original}}, nil
+						case "success_status":
+							return &http.Response{StatusCode: 200, Status: "200 " + beforeEnqueueMarker, Body: io.NopCloser(strings.NewReader(beforeEnqueueMarker))}, nil
+						default:
+							return &http.Response{StatusCode: 400, Status: "400 " + beforeEnqueueMarker, Body: io.NopCloser(strings.NewReader(beforeEnqueueMarker))}, nil
+						}
+					}),
+					Callback: testCallback{func(Message) { successes <- struct{}{} }, func(_ Message, err error) { failures <- err }},
+				})
+				if err := c.Enqueue(beforeEnqueueFixtureTrack()); err != nil {
+					t.Fatal(err)
+				}
+				c.Close()
+				requests := sent()
+				if len(requests) != 1 {
+					t.Fatalf("requests=%d, want 1", len(requests))
+				}
+				assertBeforeEnqueueRequests(t, requests, requests, log)
+				switch site {
+				case "panic":
+					if len(failures) != 0 || len(successes) != 0 || !log.has(log.errors, "string") {
+						t.Error("panic handling changed or missing type")
+					}
+				case "success_status":
+					if len(successes) != 1 || len(failures) != 0 || !log.has(log.infos, "response 200") {
+						t.Error("success handling changed")
+					}
+				default:
+					if len(failures) != 1 || len(successes) != 0 {
+						t.Fatal("missing failure callback")
+					}
+					err := <-failures
+					if site == "response" {
+						if err.Error() != "400 400 "+beforeEnqueueMarker {
+							t.Fatalf("response error changed: %v", err)
+						}
+						if !log.has(log.infos, "response 400") {
+							t.Error("missing status")
+						}
+					} else {
+						if !errors.Is(err, original) {
+							t.Fatalf("original error lost: %v", err)
+						}
+						if !log.has(log.errors, fmt.Sprintf("%T", err)) {
+							t.Error("missing error type")
+						}
+					}
+				}
+			})
+		}
+	}
 }
