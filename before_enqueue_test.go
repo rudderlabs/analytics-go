@@ -284,7 +284,7 @@ func TestBeforeEnqueueNonObjectResult(t *testing.T) {
 
 func TestBeforeEnqueueAllowsMessageTypeChange(t *testing.T) {
 	r := runHook(t, Config{BeforeEnqueue: func(Message) Message {
-		return Identify{Type: "identify", UserId: "new-user", Traits: Traits{"plan": "new"}}
+		return Identify{UserId: "new-user", Traits: Traits{"plan": "new"}}
 	}}, hookTrack())
 	assertHookSent(t, r, 1)
 	if r.wire[0]["type"] != "identify" || r.wire[0]["messageId"] != "m1" || r.wire[0]["userId"] != "new-user" {

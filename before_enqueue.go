@@ -49,8 +49,20 @@ func (c *client) runBeforeEnqueue(msg Message) (out Message, err error) {
 	}
 	// The public Message signature excludes primitive results at compile time.
 	// Custom Message implementations cannot be sent by the SDK.
+	var msgType string
 	switch out.(type) {
-	case Alias, Group, Identify, Page, Screen, Track:
+	case Alias:
+		msgType = "alias"
+	case Group:
+		msgType = "group"
+	case Identify:
+		msgType = "identify"
+	case Page:
+		msgType = "page"
+	case Screen:
+		msgType = "screen"
+	case Track:
+		msgType = "track"
 	default:
 		return nil, fmt.Errorf("beforeEnqueue must return an SDK message or nil, got %T", out)
 	}
@@ -68,6 +80,8 @@ func (c *client) runBeforeEnqueue(msg Message) (out Message, err error) {
 		c.logf("beforeEnqueue changed channel or context.library; they were restored.")
 	}
 	v.FieldByName("Channel").SetString(channel)
+	// As in Enqueue, the message's Go type decides its type field
+	v.FieldByName("Type").SetString(msgType)
 	if ctx == nil {
 		ctx = &Context{}
 		v.FieldByName("Context").Set(reflect.ValueOf(ctx))
