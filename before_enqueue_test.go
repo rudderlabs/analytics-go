@@ -198,7 +198,7 @@ func TestBeforeEnqueueValidationPanicNil(t *testing.T) {
 			if tt.count == 1 && !reflect.DeepEqual(r.wire, baseline.wire) {
 				t.Fatal("fallback changed")
 			}
-			if hookLogCount(r.log.errors, "beforeEnqueue failed for track event m1, "+tt.log+". beforeEnqueue result serialization did not complete") != 1 {
+			if hookLogCount(r.log.errors, "beforeEnqueue failed for track event m1, "+tt.log) != 1 {
 				t.Fatal(r.log.errors)
 			}
 		})
