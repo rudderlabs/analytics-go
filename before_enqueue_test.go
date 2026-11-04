@@ -114,6 +114,18 @@ func assertHookSent(t *testing.T, r hookResult, count int) {
 	}
 }
 
+type hookUser struct{ ID string }
+type hookUserRef *hookUser
+
+func TestBeforeEnqueueCopyKeepsDefinedPointerTypes(t *testing.T) {
+	in := Properties{"user": hookUserRef(&hookUser{ID: "u1"})}
+	out := deepCopyValue(reflect.ValueOf(in)).Interface().(Properties)
+	ref, ok := out["user"].(hookUserRef)
+	if !ok || ref == in["user"].(hookUserRef) || ref.ID != "u1" {
+		t.Fatalf("got %T %v, want a copied hookUserRef", out["user"], out["user"])
+	}
+}
+
 func TestBeforeEnqueueEdit(t *testing.T) {
 	r := runHook(t, Config{BeforeEnqueue: editHook(func(tr *Track) { tr.Properties["total"] = 99 })}, hookTrack())
 	assertHookSent(t, r, 1)

@@ -120,7 +120,8 @@ func deepCopyValue(src reflect.Value) reflect.Value {
 		}
 		var dst reflect.Value
 		if src.Kind() == reflect.Ptr {
-			dst = reflect.New(src.Type().Elem())
+			// Convert keeps defined pointer types (type Ref *T) intact
+			dst = reflect.New(src.Type().Elem()).Convert(src.Type())
 			dst.Elem().Set(deepCopyValue(src.Elem()))
 		} else {
 			dst = reflect.New(src.Type()).Elem()
