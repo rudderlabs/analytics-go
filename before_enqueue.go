@@ -1,6 +1,7 @@
 package analytics
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 )
@@ -28,7 +29,7 @@ func (c *client) beforeEnqueue(msg Message) (Message, error) {
 			return nil, nil
 		}
 		c.errorf("beforeEnqueue failed for %s event %s, sending the original event. %v", typ, id, err)
-		return msg, c.validateBeforeEnqueue(msg)
+		return msg, c.validateBeforeEnqueue(msg, false)
 	}
 	if out == nil {
 		v := reflect.ValueOf(msg)
@@ -46,8 +47,8 @@ func (c *client) runBeforeEnqueue(msg Message) (out Message, err error) {
 		}
 	}()
 	out = dereferenceMessage(c.BeforeEnqueue(deepCopyValue(reflect.ValueOf(msg)).Interface().(Message)))
-	completed = true
 	if out == nil {
+		completed = true
 		return nil, nil
 	}
 	// The public Message signature excludes primitive results at compile time.
@@ -67,9 +68,12 @@ func (c *client) runBeforeEnqueue(msg Message) (out Message, err error) {
 	case Track:
 		msgType = "track"
 	default:
-		return nil, fmt.Errorf("beforeEnqueue must return an SDK message or nil, got %T", out)
+		err = fmt.Errorf("beforeEnqueue must return an SDK message or nil, got %T", out)
+		completed = true
+		return nil, err
 	}
-	if err = c.validateBeforeEnqueue(out); err != nil {
+	if err = c.validateBeforeEnqueue(out, true); err != nil {
+		completed = true
 		return nil, err
 	}
 
@@ -93,16 +97,22 @@ func (c *client) runBeforeEnqueue(msg Message) (out Message, err error) {
 	if v.FieldByName("MessageId").String() == "" {
 		v.FieldByName("MessageId").Set(pre.FieldByName("MessageId"))
 	}
-	return v.Interface().(Message), nil
+	out = v.Interface().(Message)
+	completed = true
+	return out, nil
 }
 
 // Use the normal field validation and serialization. Oversize remains the
 // queue's existing ErrMessageTooBig handling, rather than a hook error.
-func (c *client) validateBeforeEnqueue(msg Message) error {
+func (c *client) validateBeforeEnqueue(msg Message, hookResult bool) error {
 	if err := msg.Validate(); err != nil {
 		return err
 	}
-	_, err := makeMessage(msg, c.MaxMessageBytes)
+	serialized, err := makeMessage(msg, c.MaxMessageBytes)
+	// encoding/json can swallow panic(nil) and return incomplete JSON.
+	if hookResult && (err == nil || err == ErrMessageTooBig) && !json.Valid(serialized.json) {
+		return fmt.Errorf("beforeEnqueue result serialization did not complete")
+	}
 	if err == ErrMessageTooBig {
 		return nil
 	}

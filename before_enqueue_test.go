@@ -168,6 +168,59 @@ func TestBeforeEnqueuePanicNil(t *testing.T) {
 	}
 }
 
+type hookPanicNilMarshaler struct{}
+
+func (hookPanicNilMarshaler) MarshalJSON() ([]byte, error) {
+	panic(nil) //nolint:govet
+}
+
+func TestBeforeEnqueueValidationPanicNil(t *testing.T) {
+	t.Setenv("GODEBUG", "panicnil=1")
+	baseline := runHook(t, Config{}, hookTrack())
+	for _, tt := range []struct {
+		name   string
+		policy BeforeEnqueueErrorPolicy
+		count  int
+		log    string
+	}{
+		{"send", BeforeEnqueueOnErrorSend, 1, "sending the original event"},
+		{"drop", BeforeEnqueueOnErrorDrop, 0, "dropping the event"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			r := runHook(t, Config{
+				BeforeEnqueue: editHook(func(tr *Track) {
+					tr.Properties["total"] = 99
+					tr.Properties["panic"] = hookPanicNilMarshaler{}
+				}),
+				BeforeEnqueueOnError: tt.policy,
+			}, hookTrack())
+			assertHookSent(t, r, tt.count)
+			if tt.count == 1 && !reflect.DeepEqual(r.wire, baseline.wire) {
+				t.Fatal("fallback changed")
+			}
+			if hookLogCount(r.log.errors, "beforeEnqueue failed for track event m1, "+tt.log) != 1 {
+				t.Fatal(r.log.errors)
+			}
+		})
+	}
+}
+
+type hookPanicNilLog struct{ beforeEnqueueLog }
+
+func (*hookPanicNilLog) Logf(string, ...interface{}) { panic(nil) } //nolint:govet
+
+func TestBeforeEnqueueRestorationPanicNil(t *testing.T) {
+	t.Setenv("GODEBUG", "panicnil=1")
+	c := &client{Config: Config{
+		BeforeEnqueue:   editHook(func(tr *Track) { tr.Channel = "browser" }),
+		Logger:          &hookPanicNilLog{},
+		MaxMessageBytes: defMaxMessageBytes,
+	}}
+	if out, err := c.runBeforeEnqueue(hookTrack()); out != nil || err == nil {
+		t.Fatalf("got out=%v err=%v, want a hook error", out, err)
+	}
+}
+
 func TestBeforeEnqueuePanicSend(t *testing.T) {
 	original := hookTrack()
 	r := runHook(t, Config{BeforeEnqueue: func(m Message) Message {
