@@ -192,8 +192,10 @@ func dereferenceMessage(msg Message) Message {
 
 func (c *client) Enqueue(msg Message) (err error) {
 	msg = dereferenceMessage(msg)
-	if err = msg.Validate(); err != nil {
-		return
+	if c.BeforeEnqueue == nil {
+		if err = msg.Validate(); err != nil {
+			return
+		}
 	}
 
 	id := c.uid()
@@ -261,6 +263,18 @@ func (c *client) Enqueue(msg Message) (err error) {
 	default:
 		err = fmt.Errorf("messages with custom types cannot be enqueued: %T", msg)
 		return
+	}
+
+	if c.BeforeEnqueue != nil {
+		// A closed client must not run the hook; a drop would hide ErrClosed
+		select {
+		case <-c.quit:
+			return ErrClosed
+		default:
+		}
+		if msg, err = c.beforeEnqueue(msg); err != nil || msg == nil {
+			return
+		}
 	}
 
 	defer func() {

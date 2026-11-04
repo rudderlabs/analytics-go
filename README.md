@@ -152,6 +152,38 @@ client, _ := analytics.NewWithConfig(WRITE_KEY,
 | Note: Gzip requires `rudder-server` version 1.4 or later. |
 | :-----|
 
+## Editing or dropping events before enqueue
+
+Set `BeforeEnqueue` to edit or drop events before they are queued. The hook runs once per event inside `Enqueue`, on the caller's goroutine, and receives its own copy of the message. Return the message to send it, or `nil` to drop it.
+
+```go
+client, _ := analytics.NewWithConfig(WRITE_KEY,
+		analytics.Config{
+			DataPlaneUrl: DATA_PLANE_URL,
+			BeforeEnqueue: func(m analytics.Message) analytics.Message {
+				if t, ok := m.(analytics.Track); ok {
+					if strings.HasPrefix(t.Event, "debug_") {
+						return nil // drop
+					}
+					delete(t.Properties, "email") // redact
+					return t
+				}
+				return m
+			},
+			// If the hook panics or returns an invalid message, drop the event
+			// instead of sending the unredacted original (the default).
+			BeforeEnqueueOnError: analytics.BeforeEnqueueOnErrorDrop,
+		})
+```
+
+The hook receives a deep copy of the enriched event before validation, so it can fix an invalid call. It may change the message type, IDs, properties, traits and timestamps. The SDK restores `channel` and `context.library`, logging one warning through `Logger.Logf` if either changed. A changed `messageId` is kept; an empty one is restored silently. `SentAt` equals `OriginalTimestamp` in the hook and is overwritten at send time.
+
+Return `nil` (including a typed nil SDK message pointer) to drop the event with one debug log and no delivery callbacks. Panics, unsupported message results and normal validation or serialization failures are logged with their original error text. `BeforeEnqueueOnError` defaults to validating and sending the untouched original; `BeforeEnqueueOnErrorDrop` drops it. Hook errors do not call `Callback.Failure`; errors validating the original surface normally from `Enqueue`.
+
+Oversized results use Go's existing size handling: they are rejected by the queue with `ErrMessageTooBig`, the usual error log and `Callback.Failure`. Oversize is not a hook error and does not trigger the send/drop policy.
+
+Hooks run once per event, including across retries, and must be safe for concurrent calls. Go's typed hook signature prevents non-function configuration; custom `Message` implementations that are not SDK messages are rejected. Inputs must be acyclic; values in application structs' unexported fields stay shared. Results are not defensively copied or JSON round-tripped.
+
 ## Sending events
 
 Refer to the [RudderStack Go SDK documentation](https://www.rudderstack.com/docs/sources/event-streams/sdks/rudderstack-go-sdk/) for more information on the supported event types.

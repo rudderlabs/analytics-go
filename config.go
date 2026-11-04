@@ -1,9 +1,9 @@
 package analytics
 
 import (
+	"fmt"
 	"net/http"
 	"time"
-	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/segmentio/backo-go"
@@ -98,6 +98,21 @@ type Config struct {
 
 	// Disable/enable gzip support.
 	DisableGzip bool
+
+	// BeforeEnqueue runs synchronously once on a deep copy of the enriched
+	// event, before validation and enqueue. Return an SDK message to send it,
+	// or nil to drop it without delivery callbacks. It may fix an invalid call.
+	// Channel and context.library are restored; an empty messageId is restored.
+	// SentAt is provisional and is overwritten at send time.
+	// Hooks must be safe for concurrent calls. Inputs must be acyclic;
+	// unexported fields of application structs remain shared.
+	BeforeEnqueue func(Message) Message
+
+	// BeforeEnqueueOnError selects send (default) or drop for panics and invalid
+	// results, including serialization errors. Hook errors are logged as-is and
+	// do not call Callback.Failure. Send validates the original event normally.
+	// Oversize uses the normal queue handling, independent of this policy.
+	BeforeEnqueueOnError BeforeEnqueueErrorPolicy
 }
 
 // This constant sets the default endpoint to which client instances send
@@ -146,8 +161,8 @@ func (c *Config) validate() error {
 				"MaxMessageBytes cannot exceed %d bytes hard limit",
 				maxHardLimitBytes,
 			),
-			Field:  "MaxMessageBytes",
-			Value:  c.MaxMessageBytes,
+			Field: "MaxMessageBytes",
+			Value: c.MaxMessageBytes,
 		}
 	}
 
@@ -165,8 +180,16 @@ func (c *Config) validate() error {
 				"MaxBatchBytes cannot exceed %d bytes hard limit",
 				maxHardLimitBytes,
 			),
-			Field:  "MaxBatchBytes",
-			Value:  c.MaxBatchBytes,
+			Field: "MaxBatchBytes",
+			Value: c.MaxBatchBytes,
+		}
+	}
+
+	if c.BeforeEnqueueOnError != BeforeEnqueueOnErrorSend && c.BeforeEnqueueOnError != BeforeEnqueueOnErrorDrop {
+		return ConfigError{
+			Reason: "unknown BeforeEnqueueOnError policy",
+			Field:  "BeforeEnqueueOnError",
+			Value:  c.BeforeEnqueueOnError,
 		}
 	}
 
