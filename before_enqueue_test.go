@@ -132,6 +132,20 @@ func TestBeforeEnqueueNilDrop(t *testing.T) {
 	}
 }
 
+func TestBeforeEnqueueClosedClient(t *testing.T) {
+	calls := 0
+	c, err := NewWithConfig(WRITE_KEY, Config{BeforeEnqueue: func(Message) Message { calls++; return nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = c.Enqueue(hookTrack()); !errors.Is(err, ErrClosed) || calls != 0 {
+		t.Fatalf("got err=%v calls=%d, want ErrClosed and no hook call", err, calls)
+	}
+}
+
 func TestBeforeEnqueuePanicSend(t *testing.T) {
 	original := hookTrack()
 	r := runHook(t, Config{BeforeEnqueue: func(m Message) Message {

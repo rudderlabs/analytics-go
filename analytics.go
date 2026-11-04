@@ -266,6 +266,12 @@ func (c *client) Enqueue(msg Message) (err error) {
 	}
 
 	if c.BeforeEnqueue != nil {
+		// A closed client must not run the hook; a drop would hide ErrClosed
+		select {
+		case <-c.quit:
+			return ErrClosed
+		default:
+		}
 		if msg, err = c.beforeEnqueue(msg); err != nil || msg == nil {
 			return
 		}
