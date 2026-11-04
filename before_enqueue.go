@@ -38,12 +38,15 @@ func (c *client) beforeEnqueue(msg Message) (Message, error) {
 }
 
 func (c *client) runBeforeEnqueue(msg Message) (out Message, err error) {
+	// Go < 1.21 recovers panic(nil) as nil, so track completion separately
+	completed := false
 	defer func() {
-		if r := recover(); r != nil {
+		if r := recover(); r != nil || !completed {
 			out, err = nil, fmt.Errorf("%v", r)
 		}
 	}()
 	out = dereferenceMessage(c.BeforeEnqueue(deepCopyValue(reflect.ValueOf(msg)).Interface().(Message)))
+	completed = true
 	if out == nil {
 		return nil, nil
 	}

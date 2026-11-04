@@ -146,6 +146,16 @@ func TestBeforeEnqueueClosedClient(t *testing.T) {
 	}
 }
 
+func TestBeforeEnqueuePanicNil(t *testing.T) {
+	// Go < 1.21 behaviour: recover() returns nil for panic(nil)
+	t.Setenv("GODEBUG", "panicnil=1")
+	r := runHook(t, Config{BeforeEnqueue: func(Message) Message { panic(nil) }}, hookTrack()) //nolint:govet
+	assertHookSent(t, r, 1)
+	if hookLogCount(r.log.errors, "sending the original event") != 1 {
+		t.Fatal("panic(nil) was treated as a drop")
+	}
+}
+
 func TestBeforeEnqueuePanicSend(t *testing.T) {
 	original := hookTrack()
 	r := runHook(t, Config{BeforeEnqueue: func(m Message) Message {
