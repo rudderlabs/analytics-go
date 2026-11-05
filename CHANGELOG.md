@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.5.1](https://github.com/rudderlabs/analytics-go/compare/v4.5.0...v4.5.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* **before-enqueue:** treat panic(nil) during result validation as a hook error ([#99](https://github.com/rudderlabs/analytics-go/issues/99)) ([3d6951f](https://github.com/rudderlabs/analytics-go/commit/3d6951f840212a120cd7a51411d642760b8c337d))
+* **before-enqueue:** validate send-fallback originals like no-hook calls ([#101](https://github.com/rudderlabs/analytics-go/issues/101)) ([89feb19](https://github.com/rudderlabs/analytics-go/commit/89feb19cb4921f08458a94269c38ea2d6882ee66))
+
 ## [4.5.0](https://github.com/rudderlabs/analytics-go/compare/v4.4.0...v4.5.0) (2026-11-04)
 
 
