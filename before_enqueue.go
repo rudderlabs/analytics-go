@@ -19,7 +19,7 @@ const (
 )
 
 // beforeEnqueue returns the message to queue, or nil to drop it.
-func (c *client) beforeEnqueue(msg Message) (Message, error) {
+func (c *client) beforeEnqueue(msg, original Message) (Message, error) {
 	out, err := c.runBeforeEnqueue(msg)
 	if err != nil {
 		v := reflect.ValueOf(msg)
@@ -29,6 +29,9 @@ func (c *client) beforeEnqueue(msg Message) (Message, error) {
 			return nil, nil
 		}
 		c.errorf("beforeEnqueue failed for %s event %s, sending the original event. %v", typ, id, err)
+		if err := original.Validate(); err != nil {
+			return nil, err
+		}
 		return msg, c.validateBeforeEnqueue(msg, false)
 	}
 	if out == nil {

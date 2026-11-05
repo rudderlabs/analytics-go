@@ -192,6 +192,7 @@ func dereferenceMessage(msg Message) Message {
 
 func (c *client) Enqueue(msg Message) (err error) {
 	msg = dereferenceMessage(msg)
+	original := msg
 	if c.BeforeEnqueue == nil {
 		if err = msg.Validate(); err != nil {
 			return
@@ -272,7 +273,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 			return ErrClosed
 		default:
 		}
-		if msg, err = c.beforeEnqueue(msg); err != nil || msg == nil {
+		if msg, err = c.beforeEnqueue(msg, original); err != nil || msg == nil {
 			return
 		}
 	}

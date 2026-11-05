@@ -267,6 +267,42 @@ func TestBeforeEnqueueValidationFailure(t *testing.T) {
 	}
 }
 
+func TestBeforeEnqueueFallbackValidatesOriginal(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		hook func(Message) Message
+	}{
+		{"error", editHook(func(tr *Track) { tr.Event = "" })},
+		{"panic", func(Message) Message { panic("boom") }},
+		{"panic_nil", func(Message) Message { panic(nil) }}, //nolint:govet
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GODEBUG", "panicnil=1")
+			for _, policy := range []BeforeEnqueueErrorPolicy{BeforeEnqueueOnErrorSend, BeforeEnqueueOnErrorDrop} {
+				for _, input := range []Track{{Event: "Order"}, hookTrack()} {
+					baseline := runHook(t, Config{}, input)
+					r := runHook(t, Config{BeforeEnqueue: tt.hook, BeforeEnqueueOnError: policy}, input)
+					if policy == BeforeEnqueueOnErrorDrop {
+						assertHookSent(t, r, 0)
+					} else if input.UserId == "" {
+						if baseline.err == nil || !reflect.DeepEqual(r.err, baseline.err) {
+							t.Fatalf("enqueue=%v, want no-hook error %v", r.err, baseline.err)
+						}
+						if r.attempts != 0 || len(r.wire) != 0 || r.successes != 0 || len(r.failures) != 0 {
+							t.Fatal("invalid original was queued")
+						}
+					} else {
+						assertHookSent(t, r, 1)
+						if !reflect.DeepEqual(r.wire, baseline.wire) {
+							t.Fatal("fallback changed")
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestBeforeEnqueueFixesInvalidCall(t *testing.T) {
 	r := runHook(t, Config{BeforeEnqueue: editHook(func(tr *Track) { tr.Event = "fixed" })}, Track{UserId: "u"})
 	assertHookSent(t, r, 1)
