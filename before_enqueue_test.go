@@ -163,8 +163,8 @@ func TestBeforeEnqueuePanicNil(t *testing.T) {
 	t.Setenv("GODEBUG", "panicnil=1")
 	r := runHook(t, Config{BeforeEnqueue: func(Message) Message { panic(nil) }}, hookTrack()) //nolint:govet
 	assertHookSent(t, r, 1)
-	if hookLogCount(r.log.errors, "sending the original event") != 1 {
-		t.Fatal("panic(nil) was treated as a drop")
+	if hookLogCount(r.log.errors, "sending the original event. beforeEnqueue panicked with nil") != 1 {
+		t.Fatal(r.log.errors)
 	}
 }
 
