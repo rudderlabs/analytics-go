@@ -192,6 +192,9 @@ func dereferenceMessage(msg Message) Message {
 
 func (c *client) Enqueue(msg Message) (err error) {
 	msg = dereferenceMessage(msg)
+	if msg == nil {
+		return fmt.Errorf("messages with custom types cannot be enqueued: %T", msg)
+	}
 	original := msg
 	if c.BeforeEnqueue == nil {
 		if err = msg.Validate(); err != nil {

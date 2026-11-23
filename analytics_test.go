@@ -408,6 +408,18 @@ func TestEnqueuingCustomTypeFails(t *testing.T) {
 	}
 }
 
+func TestEnqueuingNilMessageFails(t *testing.T) {
+	client := New(WRITE_KEY, DATA_PLANE_URL)
+	defer client.Close()
+
+	for _, msg := range []Message{nil, (*Track)(nil)} {
+		err := client.Enqueue(msg)
+		if err == nil || err.Error() != "messages with custom types cannot be enqueued: <nil>" {
+			t.Errorf("invalid/missing error when queuing nil message %T: %v", msg, err)
+		}
+	}
+}
+
 func TestTrackWithInterval(t *testing.T) {
 	const interval = 100 * time.Millisecond
 	ref := fixture("test-interval-track.json")
