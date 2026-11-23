@@ -33,4 +33,19 @@ jobs:
         run: go build -v ./...
 
       - name: Test Go
-        run: go test -race ./... -v
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./... -v
+
+      - name: Report coverage
+        env:
+          GO_MATRIX: ${{ matrix.go }}
+        run: |
+          total="$(go tool cover -func=coverage.out | tail -1)"
+          echo "$total"
+          echo "Go $GO_MATRIX unit test coverage: \`$total\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage report
+        if: ${{ matrix.go == 'go.mod' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: coverage.out
