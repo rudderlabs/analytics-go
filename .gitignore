@@ -37,3 +37,4 @@ tmp/*
 
 # Test coverage profile
 coverage.out
+coverage-func.txt
