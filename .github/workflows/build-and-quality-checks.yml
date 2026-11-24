@@ -32,5 +32,25 @@ jobs:
       - name: Build Go
         run: go build -v ./...
 
+      # Coverage of the SDK package only: Go 1.22+ also lists packages without tests (cmd/cli, example) at 0%,
+      # which would make the totals differ between matrix versions.
       - name: Test Go
-        run: go test -race ./... -v
+        run: go test -race -covermode=atomic -coverpkg=github.com/rudderlabs/analytics-go/v4 -coverprofile=coverage.out ./... -v
+
+      - name: Report coverage
+        env:
+          GO_MATRIX: ${{ matrix.go }}
+        run: |
+          go tool cover -func=coverage.out > coverage-func.txt
+          total="$(tail -n 1 coverage-func.txt)"
+          echo "$total"
+          echo "Go $GO_MATRIX SDK package coverage: \`$total\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # Advisory: an artifact service problem must not fail a required build check after the tests passed.
+      - name: Upload coverage report
+        if: ${{ matrix.go == 'go.mod' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: coverage.out
