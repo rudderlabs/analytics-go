@@ -37,7 +37,7 @@ jobs:
           repositories: rudder-sdk-e2e-tests
           permission-actions: write
       - name: Validate the candidate through the shared harness
-        uses: rudderlabs/github-action-sdk-e2e@0c79ac9ee74a9b1732d66874aa403062a31b0c26 # SDK-6013; merge dependency before this caller.
+        uses: rudderlabs/github-action-sdk-e2e@e9cb787ee60ad7cd9ade4c6b819e5d17b4d093a1 # full live E2E, cleanup, and initial run-lookup retry (#21, #22)
         with:
           token: ${{ steps.token.outputs.token }}
           suite: full
