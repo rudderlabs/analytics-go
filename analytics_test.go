@@ -689,6 +689,47 @@ func TestEnqueueAppliesDefaultContext(t *testing.T) {
 	}
 }
 
+func TestEnqueueKeepsEventContextExtraPrecedence(t *testing.T) {
+	config := Config{DefaultContext: &Context{
+		App: AppInfo{Name: "default app", Version: "1.0"},
+	}}
+	for _, test := range []struct {
+		name string
+		app  AppInfo
+		want map[string]interface{}
+	}{
+		{
+			name: "event extra takes precedence over default app",
+			want: map[string]interface{}{"name": "extra app"},
+		},
+		{
+			name: "typed event app takes precedence over event extra",
+			app:  AppInfo{Name: "typed app"},
+			want: map[string]interface{}{"name": "typed app", "version": "1.0"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			msg := Track{Event: "test", UserId: "user", Context: &Context{
+				App: test.app,
+				Extra: map[string]interface{}{
+					"app":     map[string]interface{}{"name": "extra app"},
+					"library": map[string]interface{}{"name": "extra library"},
+				},
+			}}
+			r := runHook(t, config, msg)
+			assertHookSent(t, r, 1)
+			context := r.wire[0]["context"].(map[string]interface{})
+			if got := context["app"]; !reflect.DeepEqual(got, test.want) {
+				t.Fatalf("context.app = %#v, want %#v", got, test.want)
+			}
+			library := map[string]interface{}{"name": "analytics-go", "version": Version}
+			if got := context["library"]; !reflect.DeepEqual(got, library) {
+				t.Fatalf("context.library = %#v, want %#v", got, library)
+			}
+		})
+	}
+}
+
 func TestTrackMany(t *testing.T) {
 	ref := fixture("test-many-track.json")
 

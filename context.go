@@ -132,19 +132,27 @@ func (c *client) makeContext(event *Context) *Context {
 		merged = *event
 	}
 	if c.DefaultContext != nil {
-		fillContextDefaults(reflect.ValueOf(&merged).Elem(), reflect.ValueOf(*c.DefaultContext))
+		fillContextDefaults(reflect.ValueOf(&merged).Elem(), reflect.ValueOf(*c.DefaultContext), merged.Extra)
 	}
 	merged.Library = LibraryInfo{Name: "analytics-go", Version: Version}
 	return &merged
 }
 
 // Fill fields that are omitted on the wire and merge map entries by key.
-func fillContextDefaults(event, defaults reflect.Value) {
+func fillContextDefaults(event, defaults reflect.Value, eventExtra map[string]interface{}) {
 	for i := 0; i < event.NumField(); i++ {
 		field, fallback := event.Field(i), defaults.Field(i)
+		// Top-level Extra entries supply wire values for omitted typed fields.
+		if len(eventExtra) != 0 && isZeroValue(field) {
+			structField := event.Type().Field(i)
+			name, omitEmpty := parseJsonTag(structField.Tag.Get("json"), structField.Name)
+			if _, present := eventExtra[name]; omitEmpty && present {
+				continue
+			}
+		}
 		switch field.Kind() {
 		case reflect.Struct:
-			fillContextDefaults(field, fallback)
+			fillContextDefaults(field, fallback, nil)
 		case reflect.Map:
 			if fallback.Len() == 0 {
 				continue
