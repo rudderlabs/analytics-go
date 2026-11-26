@@ -34,3 +34,7 @@ tmp/*
 .vscode
 .DS_Store
 *.env
+
+# Test coverage profile
+coverage.out
+coverage-func.txt
