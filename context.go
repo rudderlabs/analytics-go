@@ -158,11 +158,13 @@ func fillContextDefaults(event, defaults reflect.Value, eventExtra map[string]in
 				continue
 			}
 			merged := reflect.MakeMapWithSize(field.Type(), fallback.Len()+field.Len())
-			for entries := fallback.MapRange(); entries.Next(); {
-				merged.SetMapIndex(entries.Key(), entries.Value())
-			}
 			for entries := field.MapRange(); entries.Next(); {
 				merged.SetMapIndex(entries.Key(), entries.Value())
+			}
+			for entries := fallback.MapRange(); entries.Next(); {
+				if !merged.MapIndex(entries.Key()).IsValid() {
+					merged.SetMapIndex(entries.Key(), deepCopyValue(entries.Value()))
+				}
 			}
 			field.Set(merged)
 		case reflect.Slice:
