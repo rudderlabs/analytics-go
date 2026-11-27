@@ -1,5 +1,7 @@
 name: Code Quality Checks
 on:
+  push:
+    branches: ['master']
   pull_request:
     branches: ['master']
     types: ['opened', 'reopened', 'synchronize', 'edited']
@@ -12,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: [ '1.19', 'go.mod', 'stable' ]
+        go: ${{ github.event_name == 'push' && fromJSON('["go.mod"]') || fromJSON('["1.19", "go.mod", "stable"]') }}
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -22,6 +24,9 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         name: Checkout source code
+        with:
+          fetch-depth: ${{ matrix.go == 'go.mod' && '0' || '1' }} # SonarCloud uses the full Git history
+          persist-credentials: false
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         name: Setup Go ${{ matrix.go }}
@@ -54,3 +59,14 @@ jobs:
         with:
           name: coverage-report
           path: coverage.out
+
+      # Fork PRs do not receive SONAR_TOKEN. Keep scan failures advisory.
+      - name: SonarQube Scan
+        if: >-
+          matrix.go == 'go.mod' &&
+          github.event.action != 'edited' &&
+          (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
