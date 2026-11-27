@@ -132,14 +132,14 @@ func (c *client) makeContext(event *Context) *Context {
 		merged = *event
 	}
 	if c.DefaultContext != nil {
-		fillContextDefaults(reflect.ValueOf(&merged).Elem(), reflect.ValueOf(*c.DefaultContext), merged.Extra)
+		fillContextDefaults(reflect.ValueOf(&merged).Elem(), reflect.ValueOf(*c.DefaultContext), merged.Extra, make(valueCopies))
 	}
 	merged.Library = LibraryInfo{Name: "analytics-go", Version: Version}
 	return &merged
 }
 
 // Fill fields that are omitted on the wire and merge map entries by key.
-func fillContextDefaults(event, defaults reflect.Value, eventExtra map[string]interface{}) {
+func fillContextDefaults(event, defaults reflect.Value, eventExtra map[string]interface{}, copies valueCopies) {
 	for i := 0; i < event.NumField(); i++ {
 		field, fallback := event.Field(i), defaults.Field(i)
 		// Top-level Extra entries supply wire values for omitted typed fields.
@@ -152,7 +152,7 @@ func fillContextDefaults(event, defaults reflect.Value, eventExtra map[string]in
 		}
 		switch field.Kind() {
 		case reflect.Struct:
-			fillContextDefaults(field, fallback, nil)
+			fillContextDefaults(field, fallback, nil, copies)
 		case reflect.Map:
 			if fallback.Len() == 0 {
 				continue
@@ -163,7 +163,7 @@ func fillContextDefaults(event, defaults reflect.Value, eventExtra map[string]in
 			}
 			for entries := fallback.MapRange(); entries.Next(); {
 				if !merged.MapIndex(entries.Key()).IsValid() {
-					merged.SetMapIndex(entries.Key(), deepCopyValue(entries.Value()))
+					merged.SetMapIndex(entries.Key(), copies.copyValue(entries.Value()))
 				}
 			}
 			field.Set(merged)
