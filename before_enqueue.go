@@ -124,46 +124,70 @@ func (c *client) validateBeforeEnqueue(msg Message, hookResult bool) error {
 	return err
 }
 
+type copiedReference struct {
+	typ    reflect.Type
+	ptr    uintptr
+	length int
+}
+
+type valueCopies map[copiedReference]reflect.Value
+
 // Copy the enriched input without serialization. Unexported struct fields
-// retain their normal value semantics. Like ordinary SDK inputs, the input
-// must be acyclic.
+// retain their normal value semantics.
 func deepCopyValue(src reflect.Value) reflect.Value {
+	return make(valueCopies).copyValue(src)
+}
+
+func (copies valueCopies) copyValue(src reflect.Value) reflect.Value {
+	var ref copiedReference
 	switch src.Kind() {
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Ptr, reflect.Map, reflect.Slice:
 		if src.IsNil() {
 			return src
 		}
-		var dst reflect.Value
+		ref = copiedReference{typ: src.Type(), ptr: src.Pointer()}
 		if src.Kind() == reflect.Ptr {
-			// Convert keeps defined pointer types (type Ref *T) intact
-			dst = reflect.New(src.Type().Elem()).Convert(src.Type())
-			dst.Elem().Set(deepCopyValue(src.Elem()))
-		} else {
-			dst = reflect.New(src.Type()).Elem()
-			dst.Set(deepCopyValue(src.Elem()))
+			// Named and unnamed pointers to the same type can share a copy.
+			ref.typ = reflect.PointerTo(src.Type().Elem())
 		}
+		if src.Kind() == reflect.Slice {
+			ref.length = src.Len()
+		}
+		if dst, ok := copies[ref]; ok {
+			return dst.Convert(src.Type())
+		}
+	}
+
+	switch src.Kind() {
+	case reflect.Ptr:
+		dst := reflect.New(src.Type().Elem()).Convert(src.Type())
+		copies[ref] = dst
+		dst.Elem().Set(copies.copyValue(src.Elem()))
+		return dst
+	case reflect.Interface:
+		if src.IsNil() {
+			return src
+		}
+		dst := reflect.New(src.Type()).Elem()
+		dst.Set(copies.copyValue(src.Elem()))
 		return dst
 	case reflect.Map:
-		if src.IsNil() {
-			return src
-		}
 		dst := reflect.MakeMapWithSize(src.Type(), src.Len())
+		copies[ref] = dst
 		for it := src.MapRange(); it.Next(); {
-			dst.SetMapIndex(deepCopyValue(it.Key()), deepCopyValue(it.Value()))
+			dst.SetMapIndex(copies.copyValue(it.Key()), copies.copyValue(it.Value()))
 		}
 		return dst
 	case reflect.Slice, reflect.Array:
 		var dst reflect.Value
 		if src.Kind() == reflect.Slice {
-			if src.IsNil() {
-				return src
-			}
 			dst = reflect.MakeSlice(src.Type(), src.Len(), src.Len())
+			copies[ref] = dst
 		} else {
 			dst = reflect.New(src.Type()).Elem()
 		}
 		for i := 0; i < src.Len(); i++ {
-			dst.Index(i).Set(deepCopyValue(src.Index(i)))
+			dst.Index(i).Set(copies.copyValue(src.Index(i)))
 		}
 		return dst
 	case reflect.Struct:
@@ -171,7 +195,7 @@ func deepCopyValue(src reflect.Value) reflect.Value {
 		dst.Set(src)
 		for i := 0; i < src.NumField(); i++ {
 			if src.Type().Field(i).PkgPath == "" {
-				dst.Field(i).Set(deepCopyValue(src.Field(i)))
+				dst.Field(i).Set(copies.copyValue(src.Field(i)))
 			}
 		}
 		return dst

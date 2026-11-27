@@ -126,6 +126,61 @@ type ScreenInfo struct {
 	Height  int `json:"height,omitempty"`
 }
 
+func (c *client) makeContext(event *Context) *Context {
+	var merged Context
+	if event != nil {
+		merged = *event
+	}
+	if c.DefaultContext != nil {
+		fillContextDefaults(reflect.ValueOf(&merged).Elem(), reflect.ValueOf(*c.DefaultContext), merged.Extra, make(valueCopies))
+	}
+	merged.Library = LibraryInfo{Name: "analytics-go", Version: Version}
+	return &merged
+}
+
+// Fill fields that are omitted on the wire and merge map entries by key.
+func fillContextDefaults(event, defaults reflect.Value, eventExtra map[string]interface{}, copies valueCopies) {
+	for i := 0; i < event.NumField(); i++ {
+		field, fallback := event.Field(i), defaults.Field(i)
+		// Top-level Extra entries supply wire values for omitted typed fields.
+		if len(eventExtra) != 0 && isZeroValue(field) {
+			structField := event.Type().Field(i)
+			name, omitEmpty := parseJsonTag(structField.Tag.Get("json"), structField.Name)
+			if _, present := eventExtra[name]; omitEmpty && present {
+				continue
+			}
+		}
+		switch field.Kind() {
+		case reflect.Struct:
+			fillContextDefaults(field, fallback, nil, copies)
+		case reflect.Map:
+			if fallback.Len() == 0 {
+				continue
+			}
+			merged := reflect.MakeMapWithSize(field.Type(), fallback.Len()+field.Len())
+			for entries := field.MapRange(); entries.Next(); {
+				merged.SetMapIndex(entries.Key(), entries.Value())
+			}
+			for entries := fallback.MapRange(); entries.Next(); {
+				if !merged.MapIndex(entries.Key()).IsValid() {
+					merged.SetMapIndex(entries.Key(), copies.copyValue(entries.Value()))
+				}
+			}
+			field.Set(merged)
+		case reflect.Slice:
+			if field.Len() == 0 && fallback.Len() > 0 {
+				copy := reflect.MakeSlice(field.Type(), fallback.Len(), fallback.Len())
+				reflect.Copy(copy, fallback)
+				field.Set(copy)
+			}
+		default:
+			if isZeroValue(field) {
+				field.Set(fallback)
+			}
+		}
+	}
+}
+
 // Satisfy the `json.Marshaler` interface. We have to flatten out the `Extra`
 // field but the standard json package doesn't support it yet.
 // Implementing this interface allows us to override the default marshaling of

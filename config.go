@@ -55,7 +55,8 @@ type Config struct {
 	// to its logger.
 	Verbose bool
 
-	// The default context set on each message sent by the client.
+	// DefaultContext fills omitted event context fields. Traits and Extra are
+	// merged by key, with event values taking precedence.
 	DefaultContext *Context
 
 	// The retry policy used by the client to resend requests that have failed.
@@ -223,10 +224,6 @@ func makeConfig(c Config) Config {
 		c.BatchSize = DefaultBatchSize
 	}
 
-	if c.DefaultContext == nil {
-		c.DefaultContext = &Context{}
-	}
-
 	if c.RetryAfter == nil {
 		c.RetryAfter = backo.NewBacko(time.Millisecond*100, 2, 1, time.Second*30).Duration
 	}
@@ -255,12 +252,6 @@ func makeConfig(c Config) Config {
 		c.DisableGzip = true
 	}
 
-	// We always overwrite the 'library' field of the default context set on the
-	// client because we want this information to be accurate.
-	c.DefaultContext.Library = LibraryInfo{
-		Name:    "analytics-go",
-		Version: Version,
-	}
 	return c
 }
 

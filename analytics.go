@@ -126,19 +126,6 @@ func makeHttpClient(transport http.RoundTripper) http.Client {
 	return httpClient
 }
 
-func makeContext(context *Context) *Context {
-	if context == nil {
-		context = &Context{}
-	}
-	// context := Context{}
-	context.Library = LibraryInfo{
-		Name:    "analytics-go",
-		Version: Version,
-	}
-
-	return context
-}
-
 func makeAnonymousId(anonymousId string) string {
 	if anonymousId == "" {
 		return uid()
@@ -211,7 +198,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
-		m.Context = makeContext(m.Context)
+		m.Context = c.makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -221,7 +208,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
 		m.AnonymousId = makeAnonymousId(m.AnonymousId)
-		m.Context = makeContext(m.Context)
+		m.Context = c.makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -230,7 +217,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.MessageId = makeMessageId(m.MessageId, id)
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
-		m.Context = makeContext(m.Context)
+		m.Context = c.makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -240,7 +227,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
 		m.AnonymousId = makeAnonymousId(m.AnonymousId)
-		m.Context = makeContext(m.Context)
+		m.Context = c.makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -250,7 +237,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
 		m.AnonymousId = makeAnonymousId(m.AnonymousId)
-		m.Context = makeContext(m.Context)
+		m.Context = c.makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
@@ -260,7 +247,7 @@ func (c *client) Enqueue(msg Message) (err error) {
 		m.OriginalTimestamp = makeTimestamp(m.OriginalTimestamp, ts)
 		m.SentAt = m.OriginalTimestamp
 		m.AnonymousId = makeAnonymousId(m.AnonymousId)
-		m.Context = makeContext(m.Context)
+		m.Context = c.makeContext(m.Context)
 		m.Channel = "server"
 		msg = m
 
