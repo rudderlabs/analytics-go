@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.5.2](https://github.com/rudderlabs/analytics-go/compare/v4.5.1...v4.5.2) (2026-11-27)
+
+
+### Bug Fixes
+
+* apply the default context to enqueued events ([#108](https://github.com/rudderlabs/analytics-go/issues/108)) ([3cb0d34](https://github.com/rudderlabs/analytics-go/commit/3cb0d3490910fbe1d537ab0e9eed121c169b2b0d))
+* return error instead of panicking on nil messages in Enqueue ([#103](https://github.com/rudderlabs/analytics-go/issues/103)) ([d8ff442](https://github.com/rudderlabs/analytics-go/commit/d8ff4421ff725d3bb59deb074dd7f2ab314e913b))
+
 ## [4.5.1](https://github.com/rudderlabs/analytics-go/compare/v4.5.0...v4.5.1) (2026-11-05)
 
 
